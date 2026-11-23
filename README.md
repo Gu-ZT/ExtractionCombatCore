@@ -43,5 +43,6 @@ The hook spans a five-by-two rectangle but occupies only the six `X` cells. Smal
 | `backpacks/` | The bag’s outer footprint and its separate internal compartments. |
 | `containers/` | Storage grids, opening conditions, search timing and loot tables. |
 | `items/` | Occupied cells, allowed rotation, stack limits and optional custom quality. |
+| `qualities/` | Shared quality names and border colors. Reference a definition by ID, e.g. `"quality": "example:precision"`. |
 
 Servers can enable or disable the vanilla main inventory independently of how many hotbar slots are available (0–9). See the [design examples](docs/搜刮玩法设计.md#数据包目录与示例) for a field pack, a service cabinet and the hook that fits inside them.
