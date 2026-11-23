@@ -16,13 +16,13 @@ English | [简体中文](README.zh_CN.md)
 
 A powered cabinet has two ways in. Use a service key and hold for one second, or stay at the cabinet with a decoder. The decoder finishes on its own; timing a few inputs shortens the wait. Other containers can ask for a password, play a Morse message, show a Morse pattern, or use a scrolling character lock.
 
-Once the door opens, a magnifier sweeps across an opaque grey cover. A stack of iron nuggets appears first. You can take it and leave, or stay to uncover a hook five cells wide. Only revealed items show their quality outline. A data pack can supply its own quality; otherwise the outline follows the stack’s vanilla rarity.
+Once the door opens, a magnifier sweeps across an opaque grey cover. A stack of iron nuggets appears first. You can take it and leave, or stay to uncover a hook five cells wide. Only revealed items show their quality outline. Omit `quality` to use vanilla rarity, supply a custom quality, or set it to `"disable"` to hide the outline and quality hint.
 
 ## Will the hook fit?
 
 ```json
 {
-  "item": "minecraft:tripwire_hook",
+  "item": { "items": "minecraft:tripwire_hook" },
   "shape": ["  X  ", "XXXXX"],
   "rotatable": true,
   "icons": {
