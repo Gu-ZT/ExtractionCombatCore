@@ -24,9 +24,15 @@ Once the door opens, a magnifier sweeps across an opaque grey cover. A stack of 
 {
   "item": "minecraft:tripwire_hook",
   "shape": ["  X  ", "XXXXX"],
-  "rotatable": true
+  "rotatable": true,
+  "icons": {
+    "grid": "example:item/service_hook_grid",
+    "vanilla_slot": "example:item/service_hook_slot"
+  }
 }
 ```
+
+A resource pack supplies the two optional textures. In a mod backpack or container, an 80×32 PNG spans the entire five-by-two shape and turns with the hook. Empty cells stay clear. In the vanilla inventory or hotbar, the same hook uses its separate single-slot icon.
 
 The hook spans a five-by-two rectangle but occupies only the six `X` cells. Small items can fill the four gaps. Drag toward one of a slot’s four edges to choose the hook’s orientation. Double-click to transfer a whole stack between the backpack and the open container: existing items only move if the stack will not fit directly. If rearranging cannot make room, both inventories keep their original layouts.
 

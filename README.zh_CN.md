@@ -24,9 +24,15 @@
 {
   "item": "minecraft:tripwire_hook",
   "shape": ["  X  ", "XXXXX"],
-  "rotatable": true
+  "rotatable": true,
+  "icons": {
+    "grid": "example:item/service_hook_grid",
+    "vanilla_slot": "example:item/service_hook_slot"
+  }
 }
 ```
+
+两张贴图均可选，由资源包提供。放进模组背包或容器时，一张 80×32 像素的 PNG 可以铺满五格宽、两格高的范围，随挂钩转向，空格处保持透明。放进原版物品栏或快捷栏时，同一把挂钩改用独立的单格图标。
 
 挂钩宽五格、高两格，却只占六个 `X`，剩下四个空位仍能塞小件。拖动时靠近目标槽的四条边，就能选择挂钩的朝向。双击可在背包与打开的容器之间转移整叠物品：能直接装下，就不挪动已有物品；只有放不下时才尝试整理。整理后仍装不下，两边都保持原样。
 
