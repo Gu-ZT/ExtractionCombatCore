@@ -22,7 +22,7 @@ public final class DemoResources implements DataProvider {
         this.output = output;
     }
 
-    public static void gather(GatherDataEvent event) {
+    public static void gather(GatherDataEvent.Client event) {
         event.getGenerator().addProvider(true, new DemoResources(event.getGenerator().getPackOutput()));
     }
 
@@ -98,7 +98,7 @@ public final class DemoResources implements DataProvider {
 
     private static Object pool(String item, int count) {
         return Map.of("rolls", 1, "entries", List.of(Map.of("type", "minecraft:item", "name", item,
-            "functions", List.of(Map.of("function", "minecraft:set_count", "count", count)))));
+            "modifier", Map.of("type", "minecraft:set_count", "count", count))));
     }
 
     private static Object box(int x1, int y1, int z1, int x2, int y2, int z2, String surface) {
@@ -118,6 +118,9 @@ public final class DemoResources implements DataProvider {
     }
 
     private void models() {
+        for (String item : List.of("backpack", "cabinet", "service_key", "decoder", "service_hook")) {
+            asset("items/" + item, Map.of("model", Map.of("type", "minecraft:model", "model", id("item/" + item))));
+        }
         asset("sounds", Map.of("morse_dot", Map.of("sounds", List.of(id("morse_dot"))),
             "morse_dash", Map.of("sounds", List.of(id("morse_dash")))));
         String cloth = id("block/canvas");

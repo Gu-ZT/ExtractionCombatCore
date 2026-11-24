@@ -1,18 +1,24 @@
 package dev.extraction.core.client;
 
+import com.mojang.blaze3d.platform.InputConstants;
 import com.mojang.blaze3d.platform.NativeImage;
 import com.mojang.logging.LogUtils;
 import dev.extraction.core.ExtractionCore;
 import net.minecraft.client.KeyMapping;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.Screenshot;
-import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.screens.BackupConfirmScreen;
 import net.minecraft.client.gui.screens.TitleScreen;
 import net.minecraft.client.gui.screens.inventory.InventoryScreen;
+import net.minecraft.client.input.KeyEvent;
+import net.minecraft.client.input.MouseButtonEvent;
+import net.minecraft.client.input.MouseButtonInfo;
+import net.minecraft.client.multiplayer.ClientLevel;
+import net.minecraft.core.UUIDUtil;
 import net.minecraft.nbt.CompoundTag;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 import net.minecraft.world.inventory.Slot;
 import net.minecraft.world.item.Items;
 import net.neoforged.api.distmarker.Dist;
@@ -39,6 +45,7 @@ public final class ClientVisualChecks {
     private static Phase phase = Phase.START;
     private static boolean active;
     private static boolean frame;
+    private static boolean capturing;
     private static int direction;
     private static int pointerX;
     private static int pointerY;
@@ -63,30 +70,28 @@ public final class ClientVisualChecks {
             next(Phase.EXIT);
         }
         if (phase == Phase.EXIT) {
-            mc.level.disconnect();
-            mc.disconnect(new TitleScreen());
-            mc.setScreen(new TitleScreen());
+            mc.disconnectFromWorld(ClientLevel.DEFAULT_QUIT_MESSAGE);
             next(Phase.REOPEN);
             return false;
         }
         if (phase == Phase.REOPEN) {
-            if (mc.screen instanceof TitleScreen title && mc.getOverlay() == null) {
+            if (mc.gui.screen() instanceof TitleScreen title && mc.gui.overlay() == null) {
                 next(Phase.JOIN);
-                mc.createWorldOpenFlows().openWorld(world, () -> mc.setScreen(title));
+                mc.createWorldOpenFlows().openWorld(world, () -> mc.gui.setScreen(title));
             }
             return false;
         }
         if (phase == Phase.JOIN) {
-            if (mc.screen instanceof BackupConfirmScreen confirm) {
-                confirm.children().stream().filter(e -> e instanceof Button).map(e -> (Button)e).findFirst().orElseThrow().onPress();
+            if (mc.gui.screen() instanceof BackupConfirmScreen confirm) {
+                confirm.children().stream().filter(e -> e instanceof Button).map(e -> (Button)e).findFirst().orElseThrow().keyPressed(new KeyEvent(InputConstants.KEY_RETURN, 0, 0));
             }
-            if (mc.player != null && mc.screen == null && mc.getOverlay() == null) {
+            if (mc.player != null && mc.gui.screen() == null && mc.gui.overlay() == null) {
                 KeyMapping.click(ExtractionClient.OPEN.getKey());
                 next(Phase.RESTORED);
             }
             return false;
         }
-        if (!(mc.screen instanceof LootScreen screen) || screen.storage == null) {
+        if (!(mc.gui.screen() instanceof LootScreen screen) || screen.storage == null) {
             return false;
         }
         switch (phase) {
@@ -97,7 +102,7 @@ public final class ClientVisualChecks {
                 }
                 sample = hook.entry();
                 hookId = sample.id();
-                screen.mouseClicked(hook.centerX(), hook.centerY(), 0);
+                screen.mouseClicked(new MouseButtonEvent(hook.centerX(), hook.centerY(), new MouseButtonInfo(InputConstants.MOUSE_BUTTON_LEFT, 0)), false);
                 require(screen.drag != null, "未抓起挂钩");
                 aim(screen);
                 next(Phase.ROTATE);
@@ -111,7 +116,7 @@ public final class ClientVisualChecks {
                 require(screen.storage.destination(move, screen.drag, pointerX, pointerY), "挂钩预览没有目标格");
                 StorageView.Hit touched = screen.storage.hit(pointerX, pointerY);
                 ItemIcons.Cell anchor = ItemIcons.Cell.turn(screen.drag.grip.x(), screen.drag.grip.y(), sample.shape(), screen.drag.rotation);
-                require(move.getInt("x") + anchor.x() == touched.cellX() && move.getInt("y") + anchor.y() == touched.cellY(),
+                require(move.getIntOr("x", 0) + anchor.x() == touched.cellX() && move.getIntOr("y", 0) + anchor.y() == touched.cellY(),
                     "转向后原抓取格偏离鼠标");
                 screen.storage.destination(move, screen.drag, touched.centerX(), touched.centerY());
                 require(screen.drag.rotation == ROTATIONS[direction], "移到格子中央后跳转方向");
@@ -122,7 +127,7 @@ public final class ClientVisualChecks {
                     frame = false;
                     rendered = false;
                 } else {
-                    screen.mouseReleased(pointerX, pointerY, 0);
+                    screen.mouseReleased(new MouseButtonEvent(pointerX, pointerY, new MouseButtonInfo(InputConstants.MOUSE_BUTTON_LEFT, 0)));
                     next(Phase.PLACED);
                 }
             }
@@ -137,9 +142,9 @@ public final class ClientVisualChecks {
                 }
                 require(hole.entry() == null, "挂钩占用了其形状里的空格");
                 nuggetId = nugget.entry().id();
-                screen.mouseClicked(nugget.centerX(), nugget.centerY(), 0);
-                screen.mouseDragged(hole.centerX(), hole.centerY(), 0, 36, 0);
-                screen.mouseReleased(hole.centerX(), hole.centerY(), 0);
+                screen.mouseClicked(new MouseButtonEvent(nugget.centerX(), nugget.centerY(), new MouseButtonInfo(InputConstants.MOUSE_BUTTON_LEFT, 0)), false);
+                screen.mouseDragged(new MouseButtonEvent(hole.centerX(), hole.centerY(), new MouseButtonInfo(InputConstants.MOUSE_BUTTON_LEFT, 0)), 36, 0);
+                screen.mouseReleased(new MouseButtonEvent(hole.centerX(), hole.centerY(), new MouseButtonInfo(InputConstants.MOUSE_BUTTON_LEFT, 0)));
                 next(Phase.NUGGET_MOVED);
             }
             case NUGGET_MOVED -> {
@@ -152,9 +157,9 @@ public final class ClientVisualChecks {
                     return false;
                 }
                 require(hole.entry().id().equals(nuggetId) && occupied.entry().id().equals(hookId), "凹口命中与实际占格不符");
-                screen.mouseClicked(hole.centerX(), hole.centerY(), 0);
+                screen.mouseClicked(new MouseButtonEvent(hole.centerX(), hole.centerY(), new MouseButtonInfo(InputConstants.MOUSE_BUTTON_LEFT, 0)), false);
                 require(screen.drag != null && screen.drag.source.entry().id().equals(nuggetId), "点击凹口没有单独拿起铁粒");
-                screen.mouseReleased(hole.centerX(), hole.centerY(), 0);
+                screen.mouseReleased(new MouseButtonEvent(hole.centerX(), hole.centerY(), new MouseButtonInfo(InputConstants.MOUSE_BUTTON_LEFT, 0)));
                 next(Phase.HOLE);
             }
             case HOLE -> {
@@ -165,21 +170,21 @@ public final class ClientVisualChecks {
             case ICONS -> {
                 if (frame) {
                     screen.onClose();
-                    mc.setScreen(new InventoryScreen(mc.player));
+                    mc.gui.setScreen(new InventoryScreen(mc.player));
                     next(Phase.INVENTORY);
                 }
             }
             case RESTORED -> {
                 require(at(screen, nuggetId, 2, 0, 0) && at(screen, hookId, 1, 0, 1), "重载世界后背包实例、朝向或位置发生变化");
-                require(StorageView.compounds(screen.view, "packs").stream().anyMatch(p -> p.getInt("slot") == 41 && p.getBoolean("selected")),
+                require(StorageView.compounds(screen.view, "packs").stream().anyMatch(p -> p.getIntOr("slot", 0) == 41 && p.getBooleanOr("selected", false)),
                     "重新进档后装备位或所选背包丢失");
                 screen.onClose();
                 ClientPlaythrough.useCabinet(mc);
                 next(Phase.CABINET);
             }
             case CABINET -> {
-                require(screen.view.getString("mode").equals("storage"), "重新进档后维修柜再次上锁");
-                require(screen.view.contains("cabinet") && StorageView.compounds(screen.view.getCompound("cabinet"), "items").isEmpty(),
+                require(screen.view.getStringOr("mode", "").equals("storage"), "重新进档后维修柜再次上锁");
+                require(screen.view.contains("cabinet") && StorageView.compounds(screen.view.getCompoundOrEmpty("cabinet"), "items").isEmpty(),
                     "重新进档后柜子产生了重复物品");
                 active = false;
                 return true;
@@ -198,8 +203,8 @@ public final class ClientVisualChecks {
     }
 
     private static boolean at(LootScreen screen, UUID id, int x, int y, int rotation) {
-        return StorageView.compounds(screen.view.getCompound("bag"), "items").stream().anyMatch(e -> e.getUUID("id").equals(id)
-            && e.getInt("x") == x && e.getInt("y") == y && e.getInt("rotation") == rotation);
+        return StorageView.compounds(screen.view.getCompoundOrEmpty("bag"), "items").stream().anyMatch(e -> e.read("id", UUIDUtil.CODEC).orElseThrow().equals(id)
+            && e.getIntOr("x", 0) == x && e.getIntOr("y", 0) == y && e.getIntOr("rotation", 0) == rotation);
     }
 
     private static StorageView.Hit find(LootScreen screen, Predicate<StorageView.Hit> predicate) {
@@ -225,7 +230,7 @@ public final class ClientVisualChecks {
         require(h != null, "主仓目标超出可见视口");
         pointerX = h.centerX() + (rotation == 1 ? 8 : rotation == 3 ? -8 : 0);
         pointerY = h.centerY() + (rotation == 2 ? 8 : rotation == 0 ? -8 : 0);
-        screen.mouseDragged(pointerX, pointerY, 0, 20, 20);
+        screen.mouseDragged(new MouseButtonEvent(pointerX, pointerY, new MouseButtonInfo(InputConstants.MOUSE_BUTTON_LEFT, 0)), 20, 20);
     }
 
     @SubscribeEvent
@@ -233,7 +238,7 @@ public final class ClientVisualChecks {
         if (active && phase == Phase.ROTATE && renderFailure == null && event.getScreen() instanceof LootScreen screen) {
             event.setCanceled(true);
             try {
-                screen.render(event.getGuiGraphics(), pointerX, pointerY, event.getPartialTick());
+                screen.extractRenderState(event.getGuiGraphics(), pointerX, pointerY, event.getPartialTick());
                 rendered = true;
             } catch (RuntimeException | AssertionError ex) {
                 renderFailure = ex;
@@ -249,10 +254,8 @@ public final class ClientVisualChecks {
         try {
             if (event.getScreen() instanceof LootScreen screen) {
                 if (phase == Phase.ICONS) {
-                    event.getGuiGraphics().pose().pushPose();
-                    event.getGuiGraphics().pose().translate(0, 0, 350);
+                    event.getGuiGraphics().nextStratum();
                     drawIcons(event.getGuiGraphics(), screen);
-                    event.getGuiGraphics().pose().popPose();
                 } else if (phase != Phase.HOLE) {
                     return;
                 }
@@ -265,7 +268,7 @@ public final class ClientVisualChecks {
         }
     }
 
-    private static void drawIcons(GuiGraphics g, LootScreen screen) {
+    private static void drawIcons(GuiGraphicsExtractor g, LootScreen screen) {
         Minecraft mc = Minecraft.getInstance();
         String missing = "extractioncombatcore:item/missing_visual_test";
         List<String> labels = List.of("完整资源", "缺少网格图", "网格图比例错误", "缺少单格图");
@@ -273,7 +276,7 @@ public final class ClientVisualChecks {
         for (int i = 0; i < 4; i++) {
             int x = 8 + i % 2 * (screen.width / 2);
             int y = 10 + (i / 2) * (screen.height / 2);
-            g.drawString(mc.font, labels.get(i), x, y, 0xffe3ead9, false);
+            g.text(mc.font, labels.get(i), x, y, 0xffe3ead9, false);
             String grid = i == 1 ? missing : i == 2 ? sample.slotIcon() : sample.gridIcon();
             String slot = i == 3 ? missing : sample.slotIcon();
             StorageView.Entry e = new StorageView.Entry(sample.id(), sample.stack(), sample.shape(), sample.placed(), true,
@@ -283,7 +286,7 @@ public final class ClientVisualChecks {
             boolean gridDrawn = ItemIcons.grid(g, e, x, y + 15, 0);
             boolean slotDrawn = ItemIcons.slot(g, slot, x + 99, y + 16);
             if (!slotDrawn) {
-                g.renderItem(e.stack(), x + 99, y + 16);
+                g.item(e.stack(), x + 99, y + 16);
             }
             require(gridDrawn == (i == 0 || i == 3) && slotDrawn == (i != 3), "单项贴图回退影响了另一位置 " + labels.get(i));
         }
@@ -291,52 +294,57 @@ public final class ClientVisualChecks {
 
     @SubscribeEvent
     public static void sampleFrame(RenderFrameEvent.Post event) {
-        if (!active || !rendered || frame || renderFailure != null) {
+        if (!active || !rendered || capturing || frame || renderFailure != null) {
             return;
         }
         Minecraft mc = Minecraft.getInstance();
-        try (NativeImage image = Screenshot.takeScreenshot(mc.getMainRenderTarget())) {
-            String name = switch (phase) {
-                case ROTATE -> "host-rotation-" + direction;
-                case ICONS -> "host-icon-fallbacks";
-                case INVENTORY -> "host-vanilla-slot";
-                default -> "host-interlocked-items";
-            };
-            image.writeToFile(destination.resolve(name + ".png"));
-            if (phase == Phase.INVENTORY) {
-                verifyVanilla(mc, (InventoryScreen) mc.screen, image);
+        capturing = true;
+        Screenshot.takeScreenshot(mc.gameRenderer.mainRenderTarget(), image -> {
+            try (image) {
+                String name = switch (phase) {
+                    case ROTATE -> "host-rotation-" + direction;
+                    case ICONS -> "host-icon-fallbacks";
+                    case INVENTORY -> "host-vanilla-slot";
+                    default -> "host-interlocked-items";
+                };
+                image.writeToFile(destination.resolve(name + ".png"));
+                if (phase == Phase.INVENTORY) {
+                    verifyVanilla(mc, (InventoryScreen) mc.gui.screen(), image);
+                }
+                frame = true;
+            } catch (IOException | RuntimeException | AssertionError ex) {
+                renderFailure = ex;
+            } finally {
+                capturing = false;
             }
-            frame = true;
-        } catch (IOException | RuntimeException | AssertionError ex) {
-            renderFailure = ex;
-        }
+        });
     }
 
     private static void verifyVanilla(Minecraft mc, InventoryScreen screen, NativeImage actual) throws IOException {
         Slot slot = screen.getMenu().getSlot(37);
         require(slot.getItem().is(ExtractionCore.HOOK.get()), "快捷栏第二格缺少测试挂钩");
-        int left = screen.getGuiLeft() + slot.x;
-        int top = screen.getGuiTop() + slot.y;
-        ResourceLocation id = ResourceLocation.parse(sample.slotIcon()).withPath(p -> "textures/" + p + ".png");
+        int left = screen.getLeftPos() + slot.x;
+        int top = screen.getTopPos() + slot.y;
+        Identifier id = Identifier.parse(sample.slotIcon()).withPath(p -> "textures/" + p + ".png");
         int total = 0;
         int matches = 0;
         int distinctive = 0;
         double scale = mc.getWindow().getGuiScale();
-        ResourceLocation model = ExtractionCore.id("textures/item/service_hook.png");
+        Identifier model = ExtractionCore.id("textures/item/service_hook.png");
         try (InputStream input = mc.getResourceManager().open(id); NativeImage expected = NativeImage.read(input);
              InputStream modelInput = mc.getResourceManager().open(model); NativeImage held = NativeImage.read(modelInput)) {
             for (int y = 0; y < 16; y++) {
                 for (int x = 0; x < 16; x++) {
-                    int want = expected.getPixelRGBA(x, y);
+                    int want = expected.getPixel(x, y);
                     if ((want >>> 24) < 240) {
                         continue;
                     }
-                    if (held.getPixelRGBA(x, y) != want) {
+                    if (held.getPixel(x, y) != want) {
                         distinctive++;
                     }
                     int px = (int) ((left + x + .5) * scale);
                     int py = (int) ((top + y + .5) * scale);
-                    int got = actual.getPixelRGBA(px, py);
+                    int got = actual.getPixel(px, py);
                     total++;
                     if (Math.abs((got & 255) - (want & 255)) <= 5 && Math.abs((got >>> 8 & 255) - (want >>> 8 & 255)) <= 5
                         && Math.abs((got >>> 16 & 255) - (want >>> 16 & 255)) <= 5) {

@@ -1,5 +1,6 @@
 package dev.extraction.core.server;
 
+import net.minecraft.core.UUIDUtil;
 import dev.extraction.core.GameAccess;
 import dev.extraction.core.network.ExtractionNetwork;
 import dev.extraction.core.rules.Grid;
@@ -7,7 +8,7 @@ import dev.extraction.core.rules.RuleBook;
 import net.minecraft.core.BlockPos;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.chat.Component;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.item.ItemStack;
@@ -38,7 +39,7 @@ public final class LootSessions {
     private LootSessions() {
     }
 
-    private static Optional<RuleBook.Storage> layout(CompoundTag data, boolean bag, ResourceLocation id) {
+    private static Optional<RuleBook.Storage> layout(CompoundTag data, boolean bag, Identifier id) {
         if (data.contains("layout")) {
             return Optional.of(RuleBook.restoreStorage(StoredGrid.savedLayout(data), bag));
         }
@@ -73,7 +74,7 @@ public final class LootSessions {
     }
 
     public static void openCabinet(ServerPlayer player, BlockPos pos) {
-        if (player.isSpectator() || !player.isAlive() || !(player.serverLevel().getBlockEntity(pos) instanceof CabinetStorage block)) {
+        if (player.isSpectator() || !player.isAlive() || !(player.level().getBlockEntity(pos) instanceof CabinetStorage block)) {
             return;
         }
         close(player, false);
@@ -88,7 +89,7 @@ public final class LootSessions {
             CompoundTag data = block.cabinetData();
             var rules = layout(data, false, block.definitionId());
             if (rules.isEmpty()) {
-                player.displayClientMessage(Component.literal("找不到容器定义 " + block.definitionId()), true);
+                player.sendOverlayMessage(Component.literal("找不到容器定义 " + block.definitionId()));
                 return;
             }
             cabinet = new StoredGrid(rules.get(), false, data, player.registryAccess(), block::saveCabinet);
@@ -152,17 +153,17 @@ public final class LootSessions {
     }
 
     public static void act(ServerPlayer player, CompoundTag input) {
-        if (input.getString("action").equals("open")) {
+        if (input.getStringOr("action", "").equals("open")) {
             if (player.containerMenu == player.inventoryMenu) {
                 openPack(player, -1);
             }
             return;
         }
         LootSession session = active(player);
-        if (session == null || !input.hasUUID("session") || !session.id.equals(input.getUUID("session"))) {
+        if (session == null || !input.read("session", UUIDUtil.CODEC).isPresent() || !session.id.equals(input.read("session", UUIDUtil.CODEC).orElseThrow())) {
             return;
         }
-        if (!session.valid() || input.getString("action").equals("close")) {
+        if (!session.valid() || input.getStringOr("action", "").equals("close")) {
             close(player, true);
             return;
         }
@@ -196,7 +197,7 @@ public final class LootSessions {
 
     @SubscribeEvent
     public static void hurt(LivingDamageEvent.Post event) {
-        if (event.getNewDamage() > 0 && event.getEntity() instanceof ServerPlayer player) {
+        if (event.getHealthDamage() > 0 && event.getEntity() instanceof ServerPlayer player) {
             close(player, true);
         }
     }

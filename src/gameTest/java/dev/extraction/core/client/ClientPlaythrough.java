@@ -1,5 +1,6 @@
 package dev.extraction.core.client;
 
+import com.mojang.blaze3d.platform.InputConstants;
 import com.mojang.logging.LogUtils;
 import dev.extraction.core.ExtractionCore;
 import dev.extraction.core.network.ExtractionNetwork;
@@ -10,14 +11,19 @@ import net.minecraft.client.gui.screens.AccessibilityOnboardingScreen;
 import net.minecraft.client.gui.screens.ConnectScreen;
 import net.minecraft.client.gui.screens.DisconnectedScreen;
 import net.minecraft.client.gui.screens.TitleScreen;
+import net.minecraft.client.input.KeyEvent;
+import net.minecraft.client.input.MouseButtonEvent;
+import net.minecraft.client.input.MouseButtonInfo;
 import net.minecraft.client.multiplayer.ServerData;
 import net.minecraft.client.multiplayer.resolver.ServerAddress;
 import net.minecraft.client.server.IntegratedServer;
 import net.minecraft.client.tutorial.TutorialSteps;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
+import net.minecraft.core.UUIDUtil;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.nbt.CompoundTag;
+import net.minecraft.nbt.NbtOps;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
@@ -25,12 +31,11 @@ import net.minecraft.world.Difficulty;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
-import net.minecraft.world.level.GameRules;
 import net.minecraft.world.level.GameType;
 import net.minecraft.world.level.LevelSettings;
 import net.minecraft.world.level.WorldDataConfiguration;
-import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.levelgen.WorldOptions;
 import net.minecraft.world.level.levelgen.presets.WorldPresets;
 import net.minecraft.world.phys.BlockHitResult;
@@ -40,7 +45,6 @@ import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.neoforge.client.event.ClientTickEvent;
 import net.neoforged.neoforge.client.event.RenderFrameEvent;
-import org.lwjgl.glfw.GLFW;
 import org.slf4j.Logger;
 
 import java.io.IOException;
@@ -60,7 +64,7 @@ public final class ClientPlaythrough {
     private static final boolean HOST = ROLE.equals("host");
     private static final Path DIR = Path.of(System.getProperty("extraction.playtest.dir", ".")).toAbsolutePath();
     private static final BlockPos CABINET = new BlockPos(8, 80, 8);
-    private static final int PORT = 25471;
+    private static final int PORT = 25633;
     private static Stage stage = Stage.START;
     private static long entered = System.nanoTime();
     private static CompletableFuture<Void> setup;
@@ -72,7 +76,7 @@ public final class ClientPlaythrough {
     private static String worldName;
 
     private enum Stage {
-        START, JOIN, EQUIP, EQUIPPED, CABINET, ROUTE, HOLD, FIRST, VISIBILITY, CLAIM, TALLY, FINISH, VISUAL
+        START, JOIN, EQUIP, EQUIPPED, CABINET, ROUTE, HOLD, UNLOCKED, REOPEN, FIRST, VISIBILITY, CLAIM, TALLY, FINISH, VISUAL
     }
 
     private ClientPlaythrough() {
@@ -86,10 +90,10 @@ public final class ClientPlaythrough {
         Minecraft mc = Minecraft.getInstance();
         try {
             if (Duration.ofNanos(System.nanoTime() - entered).toMinutes() >= 6) {
-                throw new IllegalStateException("等待阶段超时 " + stage + "，屏幕 " + mc.screen);
+                throw new IllegalStateException("等待阶段超时 " + stage + "，屏幕 " + mc.gui.screen());
             }
-            if (mc.screen instanceof DisconnectedScreen) {
-                throw new IllegalStateException("测试连接已经断开 " + mc.screen.getTitle().getString());
+            if (mc.gui.screen() instanceof DisconnectedScreen) {
+                throw new IllegalStateException("测试连接已经断开 " + mc.gui.screen().getTitle().getString());
             }
             if (exists((HOST ? "guest" : "host") + ".failed")) {
                 throw new IllegalStateException("另一客户端报告失败");
@@ -110,19 +114,19 @@ public final class ClientPlaythrough {
     private static void advance(Minecraft mc) throws IOException {
         if (stage == Stage.START) {
             mc.options.pauseOnLostFocus = false;
-            if (mc.getOverlay() != null || !(mc.screen instanceof TitleScreen || mc.screen instanceof AccessibilityOnboardingScreen)) {
+            if (mc.gui.overlay() != null || !(mc.gui.screen() instanceof TitleScreen || mc.gui.screen() instanceof AccessibilityOnboardingScreen)) {
                 return;
             }
             Files.createDirectories(DIR);
             if (HOST) {
                 mc.getTutorial().setStep(TutorialSteps.NONE);
                 next(Stage.JOIN);
-                LevelSettings settings = new LevelSettings("双人搜刮验收", GameType.SURVIVAL, false, Difficulty.PEACEFUL,
-                    true, new GameRules(), WorldDataConfiguration.DEFAULT);
+                LevelSettings settings = new LevelSettings("双人搜刮验收", GameType.SURVIVAL,
+                new LevelSettings.DifficultySettings(Difficulty.PEACEFUL, false, false), true, WorldDataConfiguration.DEFAULT);
                 worldName = "extraction-playtest-" + System.currentTimeMillis();
                 mc.createWorldOpenFlows().createFreshLevel(worldName, settings,
-                    new WorldOptions(341, false, false), registries -> registries.registryOrThrow(Registries.WORLD_PRESET)
-                        .getHolderOrThrow(WorldPresets.FLAT).value().createWorldDimensions(), new TitleScreen());
+                    new WorldOptions(341, false, false), registries -> registries.lookupOrThrow(Registries.WORLD_PRESET)
+                        .getOrThrow(WorldPresets.FLAT).value().createWorldDimensions(), new TitleScreen());
             } else if (exists("listener.ready")) {
                 mc.getTutorial().setStep(TutorialSteps.NONE);
                 next(Stage.JOIN);
@@ -147,7 +151,7 @@ public final class ClientPlaythrough {
             if (HOST) {
                 arrangeHost(mc);
             }
-            if (exists("world.ready") && mc.screen == null && mc.level.getBlockState(CABINET).is(ExtractionCore.CABINET.get())
+            if (exists("world.ready") && mc.gui.screen() == null && mc.level.getBlockState(CABINET).is(ExtractionCore.CABINET.get())
                 && mc.player.getInventory().getItem(2).is(ExtractionCore.PACK.get())) {
                 if (!ClientInventoryChecks.tick(mc, HOST, DIR)) {
                     return;
@@ -165,14 +169,21 @@ public final class ClientPlaythrough {
             }
             return;
         }
-        if (stage == Stage.CABINET) {
-            if (mc.screen == null && (HOST ? exists("guest.equipped") : exists("host.found"))) {
+        if (stage == Stage.REOPEN) {
+            if (mc.gui.screen() == null && exists("host.hook")) {
                 useCabinet(mc);
-                next(HOST ? Stage.ROUTE : Stage.FIRST);
+                next(Stage.FIRST);
             }
             return;
         }
-        if (!(mc.screen instanceof LootScreen screen)) {
+        if (stage == Stage.CABINET) {
+            if (mc.gui.screen() == null && exists(HOST ? "guest.equipped" : "host.equipped")) {
+                useCabinet(mc);
+                next(Stage.ROUTE);
+            }
+            return;
+        }
+        if (!(mc.gui.screen() instanceof LootScreen screen)) {
             return;
         }
         CompoundTag view = screen.view;
@@ -183,43 +194,60 @@ public final class ClientPlaythrough {
                     if (point == null) {
                         return;
                     }
-                    screen.mouseClicked(point[0], point[1], 1);
+                    screen.mouseClicked(new MouseButtonEvent(point[0], point[1], new MouseButtonInfo(InputConstants.MOUSE_BUTTON_RIGHT, 0)), false);
                     next(Stage.EQUIPPED);
                 }
             }
             case EQUIPPED -> {
-                if (!StorageView.compounds(view, "packs").stream().anyMatch(p -> p.getInt("slot") == 41 && p.getBoolean("selected"))) {
+                if (!StorageView.compounds(view, "packs").stream().anyMatch(p -> p.getIntOr("slot", 0) == 41 && p.getBooleanOr("selected", false))) {
                     return;
                 }
-                require(!StorageView.compounds(view.getCompound("bag"), "sections").isEmpty(), "装备后的背包没有分区");
-                mark(ROLE + ".equipped", mc.player.getGameProfile().getName());
+                require(!StorageView.compounds(view.getCompoundOrEmpty("bag"), "sections").isEmpty(), "装备后的背包没有分区");
+                mark(ROLE + ".equipped", mc.player.getGameProfile().name());
                 screen.onClose();
                 next(Stage.CABINET);
             }
             case ROUTE -> {
-                require(view.getString("mode").equals("lock"), "维修柜应先展示开启路线");
+                require(view.getStringOr("mode", "").equals("lock"), "维修柜应先展示开启路线");
                 require(!view.contains("cabinet"), "上锁时收到了柜中内容");
                 require(!StorageView.compounds(view, "routes").isEmpty(), "缺少开启路线");
-                screen.keyPressed(GLFW.GLFW_KEY_ENTER, 0, 0);
+                screen.keyPressed(new KeyEvent(InputConstants.KEY_RETURN, 0, 0));
                 next(Stage.HOLD);
             }
             case HOLD -> {
-                if (view.getCompound("challenge").getString("type").equals("hold")) {
-                    screen.keyPressed(GLFW.GLFW_KEY_SPACE, 0, 0);
-                    next(Stage.FIRST);
+                if (view.getCompoundOrEmpty("challenge").getStringOr("type", "").equals("hold")) {
+                    if (!exists(ROLE + ".ready-to-hold")) {
+                        mark(ROLE + ".ready-to-hold", "钥匙路线已开始");
+                    }
+                    if (!exists(HOST ? "guest.ready-to-hold" : "host.ready-to-hold")) {
+                        return;
+                    }
+                    screen.keyPressed(new KeyEvent(InputConstants.KEY_SPACE, 0, 0));
+                    next(Stage.UNLOCKED);
+                }
+            }
+            case UNLOCKED -> {
+                if (!view.contains("cabinet")) {
+                    return;
+                }
+                ItemStack hand = mc.player.getMainHandItem();
+                require(hand.isEmpty() || hand.is(ExtractionCore.KEY.get()) && hand.getCount() == 1, "竞争开锁后主手物品不符");
+                mark(ROLE + (hand.isEmpty() ? ".paid" : ".retained"), "开门时客户端持钥匙数量 " + hand.getCount());
+                if (HOST) {
+                    next(Stage.VISIBILITY);
+                } else {
+                    require(items(view, "cabinet").isEmpty(), "开门时乙已经看到了未经搜索的物品");
+                    screen.onClose();
+                    next(Stage.REOPEN);
                 }
             }
             case FIRST -> {
                 if (!view.contains("cabinet")) {
                     return;
                 }
-                if (!HOST) {
-                    require(items(view, "cabinet").isEmpty(), "乙第一次打开就看到了甲的发现");
-                    mark("guest.masked", "首个柜子视图含零件已揭示物品");
-                    capture = "guest-mask";
-                } else {
-                    require(mc.player.getMainHandItem().isEmpty(), "甲开锁后的钥匙没有扣除");
-                }
+                require(items(view, "cabinet").isEmpty(), "甲已揭示挂钩，乙重开柜子时应该仍然看不到它");
+                mark("guest.masked", "甲看见挂钩后，乙再次打开柜子的首帧仍是全遮罩");
+                capture = "guest-mask";
                 next(Stage.VISIBILITY);
             }
             case VISIBILITY -> {
@@ -227,7 +255,7 @@ public final class ClientPlaythrough {
                 if (nuggets == null) {
                     return;
                 }
-                contested = nuggets.getUUID("id");
+                contested = nuggets.read("id", UUIDUtil.CODEC).orElseThrow();
                 if (HOST) {
                     mark("host.found", contested.toString());
                     capture = "host-discovery";
@@ -235,20 +263,27 @@ public final class ClientPlaythrough {
                     require(contested.toString().equals(Files.readString(DIR.resolve("host.found"))), "两人揭示了不同的铁粒条目");
                     stale = screen.action("transfer");
                     stale.putString("from", "cabinet");
-                    stale.putUUID("id", contested);
+                    stale.store("id", UUIDUtil.CODEC, contested);
                     mark("guest.found", contested.toString());
                 }
                 next(Stage.CLAIM);
             }
             case CLAIM -> {
+                if (HOST && !exists("host.hook") && items(view, "cabinet").size() == 2) {
+                    mark("host.hook", "主机已揭示铁粒和挂钩");
+                }
+
                 if (HOST && exists("guest.found")) {
+                    require(exists("host.paid") && exists("guest.retained") || exists("guest.paid") && exists("host.retained"),
+                        "两人同时持钥匙开柜必须恰好消耗一把钥匙");
+
                     int[] point = find(screen, "cabinet", contested, -1);
                     if (point == null) {
                         return;
                     }
                     for (int n = 0; n < 2; n++) {
-                        screen.mouseClicked(point[0], point[1], 0);
-                        screen.mouseReleased(point[0], point[1], 0);
+                        screen.mouseClicked(new MouseButtonEvent(point[0], point[1], new MouseButtonInfo(InputConstants.MOUSE_BUTTON_LEFT, 0)), false);
+                        screen.mouseReleased(new MouseButtonEvent(point[0], point[1], new MouseButtonInfo(InputConstants.MOUSE_BUTTON_LEFT, 0)));
                     }
                     next(Stage.TALLY);
                 } else if (!HOST && exists("host.claimed")) {
@@ -265,16 +300,17 @@ public final class ClientPlaythrough {
                     if (found == null) {
                         return;
                     }
-                    int count = ItemStack.parseOptional(mc.player.registryAccess(), found.getCompound("stack")).getCount();
+                    int count = found.read("stack", ItemStack.OPTIONAL_CODEC, mc.player.registryAccess()
+                        .createSerializationContext(NbtOps.INSTANCE)).orElse(ItemStack.EMPTY).getCount();
                     require(count == 4, "甲的背包应正好收到四个铁粒");
                     mark("host.claimed", "4");
                 } else {
-                    if (view.getString("message").isEmpty()) {
+                    if (view.getStringOr("message", "").isEmpty()) {
                         return;
                     }
                     require(found == null, "乙使用过时界面重复获得了铁粒");
                     capture = "guest-conflict";
-                    mark("guest.verified", view.getString("message"));
+                    mark("guest.verified", view.getStringOr("message", ""));
                 }
                 next(Stage.FINISH);
             }
@@ -340,10 +376,10 @@ public final class ClientPlaythrough {
                 level.setBlockAndUpdate(CABINET.west(), Blocks.REDSTONE_BLOCK.defaultBlockState());
                 for (int i = 0; i < players.size(); i++) {
                     ServerPlayer player = players.get(i);
-                    boolean owner = server.isSingleplayerOwner(player.getGameProfile());
+                    boolean owner = server.isSingleplayerOwner(player.nameAndId());
                     player.connection.teleport(CABINET.getX() + (owner ? .3 : 1.3), CABINET.getY(), CABINET.getZ() + 2.4, 180, 20);
-                    player.getInventory().selected = 0;
-                    player.getInventory().setItem(0, owner ? new ItemStack(ExtractionCore.KEY.get()) : ItemStack.EMPTY);
+                    player.getInventory().setSelectedSlot(0);
+                    player.getInventory().setItem(0, new ItemStack(ExtractionCore.KEY.get()));
                     if (owner) {
                         player.getInventory().setItem(1, new ItemStack(ExtractionCore.HOOK.get()));
                     }
@@ -351,7 +387,7 @@ public final class ClientPlaythrough {
                     player.inventoryMenu.broadcastChanges();
                 }
                 try {
-                    mark("world.ready", players.get(0).getGameProfile().getName() + " / " + players.get(1).getGameProfile().getName());
+                    mark("world.ready", players.get(0).getGameProfile().name() + " / " + players.get(1).getGameProfile().name());
                 } catch (IOException failure) {
                     throw new IllegalStateException("无法记录世界准备状态", failure);
                 }
@@ -373,12 +409,12 @@ public final class ClientPlaythrough {
     }
 
     private static List<CompoundTag> items(CompoundTag view, String panel) {
-        return StorageView.compounds(view.getCompound(panel), "items");
+        return StorageView.compounds(view.getCompoundOrEmpty(panel), "items");
     }
 
     private static CompoundTag nugget(Minecraft mc, CompoundTag view, String panel) {
-        return items(view, panel).stream().filter(entry -> ItemStack.parseOptional(mc.player.registryAccess(),
-            entry.getCompound("stack")).is(Items.IRON_NUGGET)).findFirst().orElse(null);
+        return items(view, panel).stream().filter(entry -> entry.read("stack", ItemStack.OPTIONAL_CODEC, mc.player.registryAccess()
+            .createSerializationContext(NbtOps.INSTANCE)).orElse(ItemStack.EMPTY).is(Items.IRON_NUGGET)).findFirst().orElse(null);
     }
 
     private static void require(boolean condition, String why) {
@@ -406,7 +442,7 @@ public final class ClientPlaythrough {
     public static void captureFrame(RenderFrameEvent.Post event) {
         if (capture != null) {
             Minecraft mc = Minecraft.getInstance();
-            Screenshot.grab(DIR.toFile(), capture + ".png", mc.getMainRenderTarget(), ClientPlaythrough::captured);
+            Screenshot.grab(DIR.toFile(), capture + ".png", mc.gameRenderer.mainRenderTarget(), 1, ClientPlaythrough::captured);
             capture = null;
         }
     }

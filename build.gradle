@@ -45,9 +45,9 @@ neoForge {
         }
         data {
             gameDirectory = file("build/datagen")
-            data()
-            programArguments.addAll '--mod', 'extractioncombatcore', '--all', '--output',
-                file('src/generated/resources').absolutePath, '--existing', file('src/main/resources').absolutePath
+            clientData()
+            programArguments.addAll '--mod', 'extractioncombatcore', '--output',
+                file('src/generated/resources').absolutePath
         }
     }
     mods {

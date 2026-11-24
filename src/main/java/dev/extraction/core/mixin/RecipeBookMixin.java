@@ -11,7 +11,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
 @Mixin(ServerPlaceRecipe.class)
 abstract class RecipeBookMixin {
-    @Shadow protected Inventory inventory;
+    @Shadow @org.spongepowered.asm.mixin.Final private Inventory inventory;
 
     @Inject(method = "getAmountOfFreeSlotsInInventory", at = @At("HEAD"), cancellable = true)
     private void extractionRecipeSpace(CallbackInfoReturnable<Integer> ci) {

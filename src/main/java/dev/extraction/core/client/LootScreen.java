@@ -2,14 +2,17 @@ package dev.extraction.core.client;
 
 import com.mojang.blaze3d.platform.InputConstants;
 import dev.extraction.core.network.ExtractionNetwork;
-import net.minecraft.Util;
-import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.core.UUIDUtil;
+import net.minecraft.util.Util;
+import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.chat.Component;
-import net.minecraft.network.protocol.game.ServerboundPlayerCommandPacket;
-import org.lwjgl.glfw.GLFW;
+import net.minecraft.client.input.KeyEvent;
+import net.minecraft.client.input.MouseButtonEvent;
+import net.minecraft.network.protocol.game.ServerboundPlayerInputPacket;
+import net.minecraft.world.entity.player.Input;
 
 import java.nio.charset.StandardCharsets;
 import java.util.UUID;
@@ -20,6 +23,7 @@ final class LootScreen extends Screen {
     CompoundTag view;
     StorageView storage;
     private EditBox edit;
+    private String acceptedAnswer = "";
     StorageView.Drag drag;
     private long dragRevision;
     private StorageView.Hit lastClick;
@@ -33,7 +37,7 @@ final class LootScreen extends Screen {
 
     LootScreen(CompoundTag view) {
         super(tr("title"));
-        session = view.getUUID("session");
+        session = view.read("session", UUIDUtil.CODEC).orElseThrow();
         update(view);
     }
 
@@ -51,7 +55,7 @@ final class LootScreen extends Screen {
     }
 
     private boolean locked() {
-        return view.getString("mode").equals("lock");
+        return view.getStringOr("mode", "").equals("lock");
     }
 
     void update(CompoundTag next) {
@@ -69,7 +73,13 @@ final class LootScreen extends Screen {
         String previous = answer();
         edit = new EditBox(font, 0, 0, 90, 17, tr("answer"));
         edit.setMaxLength(32767);
-        edit.setFilter(text -> text.getBytes(StandardCharsets.UTF_8).length <= 32000);
+        edit.setResponder(text -> {
+            if (text.getBytes(StandardCharsets.UTF_8).length <= 32000) {
+                acceptedAnswer = text;
+            } else {
+                edit.setValue(acceptedAnswer);
+            }
+        });
         edit.setValue(previous);
         edit.setHint(tr("answer"));
         edit.visible = false;
@@ -108,8 +118,8 @@ final class LootScreen extends Screen {
     CompoundTag action(String name) {
         CompoundTag data = new CompoundTag();
         data.putString("action", name);
-        data.putUUID("session", session);
-        data.putLong("revision", view.getLong("revision"));
+        data.store("session", UUIDUtil.CODEC, session);
+        data.putLong("revision", view.getLongOr("revision", 0L));
         return data;
     }
 
@@ -123,16 +133,17 @@ final class LootScreen extends Screen {
             return;
         }
         InputConstants.Key binding = minecraft.options.keyShift.getKey();
-        long window = minecraft.getWindow().getWindow();
         boolean down = switch (binding.getType()) {
-            case KEYSYM -> binding.getValue() >= 0 && InputConstants.isKeyDown(window, binding.getValue());
-            case MOUSE -> GLFW.glfwGetMouseButton(window, binding.getValue()) == GLFW.GLFW_PRESS;
+            case KEYBOARD -> binding.getValue() >= 0 && InputConstants.isKeyDown(binding.getValue());
+            case MOUSE -> (org.lwjgl.sdl.SDLMouse.SDL_GetMouseState((java.nio.FloatBuffer) null, null) & 1 << (binding.getValue() - 1)) != 0;
             default -> sneakInput;
         };
         if (down) {
-            minecraft.player.connection.send(new ServerboundPlayerCommandPacket(minecraft.player, ServerboundPlayerCommandPacket.Action.PRESS_SHIFT_KEY));
+            Input previous = minecraft.player.input.keyPresses;
+            Input shifted = new Input(previous.forward(), previous.backward(), previous.left(), previous.right(), previous.jump(), true, previous.sprint());
+            minecraft.player.connection.send(new ServerboundPlayerInputPacket(shifted));
             send(action);
-            minecraft.player.connection.send(new ServerboundPlayerCommandPacket(minecraft.player, ServerboundPlayerCommandPacket.Action.RELEASE_SHIFT_KEY));
+            minecraft.player.connection.send(new ServerboundPlayerInputPacket(previous));
         }
     }
 
@@ -145,32 +156,32 @@ final class LootScreen extends Screen {
     }
 
     @Override
-    public void render(GuiGraphics g, int mx, int my, float partialTick) {
+    public void extractRenderState(GuiGraphicsExtractor g, int mx, int my, float partialTick) {
         g.fill(1, 1, width - 1, height - 1, 0xf315201c);
-        g.renderOutline(1, 1, width - 2, height - 2, 0xff657c6e);
+        g.outline(1, 1, width - 2, height - 2, 0xff657c6e);
         g.fill(2, 2, width - 2, 20, 0xff2a4035);
         g.fill(8, 7, 10, 15, 0xffdeaf6b);
-        g.drawString(font, locked() ? tr("lock_title") : title, 15, 6, 0xffe4ecdf, false);
-        g.drawString(font, "×", width - 17, 6, mx >= width - 24 && my < 20 ? 0xffffd097 : 0xffbdcbbd, false);
+        g.text(font, locked() ? tr("lock_title") : title, 15, 6, 0xffe4ecdf, false);
+        g.text(font, "×", width - 17, 6, mx >= width - 24 && my < 20 ? 0xffffd097 : 0xffbdcbbd, false);
         if (locked()) {
             lock.draw(g, font, width, height, mx, my, partialTick, clock);
             if (edit.visible) {
-                edit.render(g, mx, my, partialTick);
+                edit.extractRenderState(g, mx, my, partialTick);
             }
         } else {
             storage.draw(g, font, width, height, mx, my, clock, drag, moving);
         }
         g.fill(2, height - 21, width - 2, height - 2, 0xff202d26);
-        String message = view.getString("message");
-        if (view.getBoolean("organizing")) {
-            g.drawString(font, tr("organizing"), 9, height - 15, 0xffedcca1, false);
-            g.drawString(font, tr("cancel"), width - 10 - font.width(tr("cancel")), height - 15, 0xffe4e6d7, false);
+        String message = view.getStringOr("message", "");
+        if (view.getBooleanOr("organizing", false)) {
+            g.text(font, tr("organizing"), 9, height - 15, 0xffedcca1, false);
+            g.text(font, tr("cancel"), width - 10 - font.width(tr("cancel")), height - 15, 0xffe4e6d7, false);
         } else if (!message.isEmpty()) {
-            g.drawString(font, font.plainSubstrByWidth(Component.translatableWithFallback(message, message).getString(), width - 19),
+            g.text(font, font.plainSubstrByWidth(Component.translatableWithFallback(message, message).getString(), width - 19),
                 9, height - 15, 0xffeabb8d, false);
         } else {
             Component tip = locked() ? tr("leave") : tr("drag_hint");
-            g.drawString(font, font.plainSubstrByWidth(tip.getString(), width - 19), 9, height - 15, 0xffa8b6ab, false);
+            g.text(font, font.plainSubstrByWidth(tip.getString(), width - 19), 9, height - 15, 0xffa8b6ab, false);
         }
         if (!locked() && drag == null) {
             storage.tooltip(g, font, mx, my);
@@ -178,24 +189,25 @@ final class LootScreen extends Screen {
     }
 
     @Override
-    public boolean mouseClicked(double x, double y, int button) {
-        int mx = (int) x;
-        int my = (int) y;
-        if (button == 0 && mx >= width - 24 && my < 20) {
+    public boolean mouseClicked(MouseButtonEvent event, boolean doubleClick) {
+        int button = event.button();
+        int mx = (int) event.x();
+        int my = (int) event.y();
+        if (button == InputConstants.MOUSE_BUTTON_LEFT && mx >= width - 24 && my < 20) {
             onClose();
             return true;
         }
-        if (view.getBoolean("organizing") && my >= height - 21 && mx >= width - 80) {
+        if (view.getBooleanOr("organizing", false) && my >= height - 21 && mx >= width - 80) {
             send(action("cancel"));
             return true;
         }
         if (locked()) {
-            if (lock.click(mx, my, button) || ExtractionClient.ACTION.matchesMouse(button) && lock.press()) {
+            if (lock.click(mx, my, button) || ExtractionClient.ACTION.matchesMouse(event) && lock.press()) {
                 return true;
             }
-            return super.mouseClicked(x, y, button);
+            return super.mouseClicked(event, doubleClick);
         }
-        if (view.getBoolean("organizing")) {
+        if (view.getBooleanOr("organizing", false)) {
             return true;
         }
         int pack = storage.nextPack(mx, my);
@@ -209,7 +221,7 @@ final class LootScreen extends Screen {
         if (hit == null || hit.entry() == null) {
             return false;
         }
-        if (hit.vanilla() && button == 1) {
+        if (hit.vanilla() && button == InputConstants.MOUSE_BUTTON_RIGHT) {
             CompoundTag change = action(hit.entry().recovery() ? "recover" : "equip");
             int slot = hit.entry().recovery() ? hit.slot() : storage.equipTarget(hit);
             if (slot < 0) {
@@ -219,7 +231,7 @@ final class LootScreen extends Screen {
             send(change);
             return true;
         }
-        if (button != 0 || hit.entry().stack().isEmpty()) {
+        if (button != InputConstants.MOUSE_BUTTON_LEFT || hit.entry().stack().isEmpty()) {
             return false;
         }
         long now = Util.getMillis();
@@ -233,7 +245,7 @@ final class LootScreen extends Screen {
             lastClick = hit;
             lastClickTime = now;
             drag = new StorageView.Drag(hit);
-            dragRevision = view.getLong("revision");
+            dragRevision = view.getLongOr("revision", 0L);
             moving = false;
             startX = mx;
             startY = my;
@@ -249,27 +261,27 @@ final class LootScreen extends Screen {
     }
 
     @Override
-    public boolean mouseDragged(double x, double y, int button, double dx, double dy) {
+    public boolean mouseDragged(MouseButtonEvent event, double dx, double dy) {
         if (drag != null) {
-            if (Math.abs(x - startX) + Math.abs(y - startY) >= 3) {
+            if (Math.abs(event.x() - startX) + Math.abs(event.y() - startY) >= 3) {
                 moving = true;
                 lastClick = null;
             }
             return true;
         }
-        return super.mouseDragged(x, y, button, dx, dy);
+        return super.mouseDragged(event, dx, dy);
     }
 
     @Override
-    public boolean mouseReleased(double x, double y, int button) {
+    public boolean mouseReleased(MouseButtonEvent event) {
         if (locked()) {
             lock.release();
         }
-        if (drag != null && button == 0) {
+        if (drag != null && event.button() == InputConstants.MOUSE_BUTTON_LEFT) {
             if (moving) {
                 CompoundTag move = action("move");
                 move.putLong("revision", dragRevision);
-                if (storage.destination(move, drag, (int) x, (int) y)) {
+                if (storage.destination(move, drag, (int) event.x(), (int) event.y())) {
                     StorageView.source(move, drag.source);
                     send(move);
                 }
@@ -278,7 +290,7 @@ final class LootScreen extends Screen {
             drag = null;
             return true;
         }
-        return super.mouseReleased(x, y, button);
+        return super.mouseReleased(event);
     }
 
     @Override
@@ -286,46 +298,47 @@ final class LootScreen extends Screen {
         if (locked()) {
             lock.scroll(vertical);
         } else {
-            storage.scroll(horizontal, vertical, hasShiftDown());
+            storage.scroll(horizontal, vertical, minecraft.hasShiftDown());
         }
         return true;
     }
 
     @Override
-    public boolean keyPressed(int key, int scan, int modifiers) {
-        if (minecraft.options.keyShift.matches(key, scan)) {
+    public boolean keyPressed(KeyEvent event) {
+        int key = event.key();
+        if (minecraft.options.keyShift.matches(event)) {
             sneakInput = true;
         }
-        if (key == GLFW.GLFW_KEY_ESCAPE || ExtractionClient.OPEN.matches(key, scan) && !(locked() && lock.takesText())) {
+        if (key == InputConstants.KEY_ESCAPE || ExtractionClient.OPEN.matches(event) && !(locked() && lock.takesText())) {
             onClose();
             return true;
         }
         if (locked()) {
-            if (key == GLFW.GLFW_KEY_ENTER || key == GLFW.GLFW_KEY_KP_ENTER) {
+            if (key == InputConstants.KEY_RETURN || key == InputConstants.KEY_NUMPADENTER) {
                 lock.submit();
                 return true;
             }
-            if (lock.routeMenu() && (key == GLFW.GLFW_KEY_DOWN || key == GLFW.GLFW_KEY_UP)) {
-                lock.select(key == GLFW.GLFW_KEY_UP ? -1 : 1);
+            if (lock.routeMenu() && (key == InputConstants.KEY_DOWN || key == InputConstants.KEY_UP)) {
+                lock.select(key == InputConstants.KEY_UP ? -1 : 1);
                 return true;
             }
-            if (ExtractionClient.ACTION.matches(key, scan) && lock.press()) {
+            if (ExtractionClient.ACTION.matches(event) && lock.press()) {
                 return true;
             }
         }
-        return super.keyPressed(key, scan, modifiers);
+        return super.keyPressed(event);
     }
 
     @Override
-    public boolean keyReleased(int key, int scan, int modifiers) {
-        if (minecraft.options.keyShift.matches(key, scan)) {
+    public boolean keyReleased(KeyEvent event) {
+        if (minecraft.options.keyShift.matches(event)) {
             sneakInput = false;
         }
-        if (locked() && ExtractionClient.ACTION.matches(key, scan)) {
+        if (locked() && ExtractionClient.ACTION.matches(event)) {
             lock.release();
             return true;
         }
-        return super.keyReleased(key, scan, modifiers);
+        return super.keyReleased(event);
     }
 
     void closeFromServer() {

@@ -1,6 +1,6 @@
 # 地图作者使用说明
 
-在 Minecraft 1.21.1 客户端和服务端安装本模组与 AnvilLib 2.0.0，进入创造模式，在「搜刮演示套件」页取得野外随身包、通电维修柜、钥匙和译码器。
+在 Minecraft 26.3 客户端和服务端使用 Java 25、NeoForge 26.3.0.100，安装本模组与 AnvilLib 2.0.0，进入创造模式，在「搜刮演示套件」页取得野外随身包、通电维修柜、钥匙和译码器。
 
 ## 试玩维修柜
 
@@ -11,7 +11,7 @@
 
 ## 玩家库存配置
 
-世界的 `serverconfig/extractioncombatcore-server.toml` 管理库存限制。主背包与快捷栏可独立设置。禁用槽中的旧物可以取回，护甲和副手仍可使用。
+服务端实例中的 `config/extractioncombatcore-synced.toml` 管理库存限制。主背包与快捷栏可独立设置。禁用槽中的旧物可以取回，护甲和副手仍可使用。
 
 ```toml
 vanilla_main_inventory_enabled = true
@@ -31,5 +31,7 @@ enabled_hotbar_slots = 9
 | `/extraction flag example:power_room true` | 启用世界机关，传入 `false` 可复位 |
 
 机关条件写作 `{"type":"unlocked","flag":"example:power_room"}`。同一路线的 `requires` 必须同时满足，`steps` 按顺序完成。钥匙或标签条件可分别使用 `consume` 扣除一件物品、使用 `damage` 扣除工具耐久。服务端只在整条路线成功时结算代价。
+
+Minecraft 26.3 的数据包格式为 121.0，资源包格式为 97.1。战利品池给整叠物品设置数量时，条目中的 `modifier` 使用 `{"type":"minecraft:set_count","count":4}`。本模组的维修柜用它生成四个铁粒。
 
 固定柜子支持创造移除。服务端保存战利品、待放入物品、解锁状态及每位玩家的发现记录。资源包可分别提供完整网格图和原版单格图，缺图时只有对应显示场合回退。[数据包与玩法规格](搜刮玩法设计.md)

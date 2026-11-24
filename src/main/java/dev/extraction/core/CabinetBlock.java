@@ -54,6 +54,6 @@ final class CabinetBlock extends Block implements EntityBlock {
         if (player instanceof ServerPlayer serverPlayer) {
             LootSessions.openCabinet(serverPlayer, pos);
         }
-        return InteractionResult.sidedSuccess(level.isClientSide);
+        return InteractionResult.SUCCESS;
     }
 }
