@@ -86,6 +86,7 @@ final class StoredGrid {
         if (unlocked || !challenge.complete() || !challenge.allowed(player, position, true)) {
             return false;
         }
+        player.containerMenu.broadcastChanges();
         unlocked = true;
         revision++;
         if (generated) {

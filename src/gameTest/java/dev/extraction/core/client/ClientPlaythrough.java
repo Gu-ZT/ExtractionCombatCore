@@ -72,7 +72,7 @@ public final class ClientPlaythrough {
     private static String worldName;
 
     private enum Stage {
-        START, JOIN, EQUIP, EQUIPPED, CABINET, ROUTE, HOLD, FIRST, VISIBILITY, CLAIM, TALLY, FINISH, VISUAL
+        START, JOIN, EQUIP, EQUIPPED, CABINET, ROUTE, HOLD, UNLOCKED, REOPEN, FIRST, VISIBILITY, CLAIM, TALLY, FINISH, VISUAL
     }
 
     private ClientPlaythrough() {
@@ -165,10 +165,17 @@ public final class ClientPlaythrough {
             }
             return;
         }
-        if (stage == Stage.CABINET) {
-            if (mc.screen == null && (HOST ? exists("guest.equipped") : exists("host.found"))) {
+        if (stage == Stage.REOPEN) {
+            if (mc.screen == null && exists("host.hook")) {
                 useCabinet(mc);
-                next(HOST ? Stage.ROUTE : Stage.FIRST);
+                next(Stage.FIRST);
+            }
+            return;
+        }
+        if (stage == Stage.CABINET) {
+            if (mc.screen == null && exists(HOST ? "guest.equipped" : "host.equipped")) {
+                useCabinet(mc);
+                next(Stage.ROUTE);
             }
             return;
         }
@@ -205,21 +212,38 @@ public final class ClientPlaythrough {
             }
             case HOLD -> {
                 if (view.getCompound("challenge").getString("type").equals("hold")) {
+                    if (!exists(ROLE + ".ready-to-hold")) {
+                        mark(ROLE + ".ready-to-hold", "钥匙路线已开始");
+                    }
+                    if (!exists(HOST ? "guest.ready-to-hold" : "host.ready-to-hold")) {
+                        return;
+                    }
                     screen.keyPressed(GLFW.GLFW_KEY_SPACE, 0, 0);
-                    next(Stage.FIRST);
+                    next(Stage.UNLOCKED);
+                }
+            }
+            case UNLOCKED -> {
+                if (!view.contains("cabinet")) {
+                    return;
+                }
+                ItemStack hand = mc.player.getMainHandItem();
+                require(hand.isEmpty() || hand.is(ExtractionCore.KEY.get()) && hand.getCount() == 1, "竞争开锁后主手物品不符");
+                mark(ROLE + (hand.isEmpty() ? ".paid" : ".retained"), "开门时客户端持钥匙数量 " + hand.getCount());
+                if (HOST) {
+                    next(Stage.VISIBILITY);
+                } else {
+                    require(items(view, "cabinet").isEmpty(), "开门时乙已经看到了未经搜索的物品");
+                    screen.onClose();
+                    next(Stage.REOPEN);
                 }
             }
             case FIRST -> {
                 if (!view.contains("cabinet")) {
                     return;
                 }
-                if (!HOST) {
-                    require(items(view, "cabinet").isEmpty(), "乙第一次打开就看到了甲的发现");
-                    mark("guest.masked", "首个柜子视图含零件已揭示物品");
-                    capture = "guest-mask";
-                } else {
-                    require(mc.player.getMainHandItem().isEmpty(), "甲开锁后的钥匙没有扣除");
-                }
+                require(items(view, "cabinet").isEmpty(), "甲已揭示挂钩，乙重开柜子时应该仍然看不到它");
+                mark("guest.masked", "甲看见挂钩后，乙再次打开柜子的首帧仍是全遮罩");
+                capture = "guest-mask";
                 next(Stage.VISIBILITY);
             }
             case VISIBILITY -> {
@@ -241,7 +265,14 @@ public final class ClientPlaythrough {
                 next(Stage.CLAIM);
             }
             case CLAIM -> {
+                if (HOST && !exists("host.hook") && items(view, "cabinet").size() == 2) {
+                    mark("host.hook", "主机已揭示铁粒和挂钩");
+                }
+
                 if (HOST && exists("guest.found")) {
+                    require(exists("host.paid") && exists("guest.retained") || exists("guest.paid") && exists("host.retained"),
+                        "两人同时持钥匙开柜必须恰好消耗一把钥匙");
+
                     int[] point = find(screen, "cabinet", contested, -1);
                     if (point == null) {
                         return;
@@ -343,7 +374,7 @@ public final class ClientPlaythrough {
                     boolean owner = server.isSingleplayerOwner(player.getGameProfile());
                     player.connection.teleport(CABINET.getX() + (owner ? .3 : 1.3), CABINET.getY(), CABINET.getZ() + 2.4, 180, 20);
                     player.getInventory().selected = 0;
-                    player.getInventory().setItem(0, owner ? new ItemStack(ExtractionCore.KEY.get()) : ItemStack.EMPTY);
+                    player.getInventory().setItem(0, new ItemStack(ExtractionCore.KEY.get()));
                     if (owner) {
                         player.getInventory().setItem(1, new ItemStack(ExtractionCore.HOOK.get()));
                     }
