@@ -1,0 +1,27 @@
+{
+  "sections": [
+    {
+      "id": "main",
+      "shape": [
+        "XX"
+      ]
+    }
+  ],
+  "access": {
+    "routes": [
+      {
+        "requires": [
+          {
+            "type": "example:compass"
+          }
+        ],
+        "steps": [
+          {
+            "type": "example:dial",
+            "turns": 2
+          }
+        ]
+      }
+    ]
+  }
+}

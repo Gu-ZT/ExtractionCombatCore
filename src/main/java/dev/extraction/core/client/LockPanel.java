@@ -57,7 +57,7 @@ final class LockPanel {
     }
 
     boolean takesText() {
-        return type().equals("password") || type().endsWith("morse");
+        return type().equals("password") || type().equals("audio_morse") || type().equals("pattern_morse");
     }
 
     void update(CompoundTag view, long clock) {
