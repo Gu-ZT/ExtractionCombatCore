@@ -1,5 +1,6 @@
 package dev.extraction.core.server;
 
+import net.minecraft.core.UUIDUtil;
 import dev.extraction.core.GameAccess;
 import dev.extraction.core.network.ExtractionNetwork;
 import dev.extraction.core.rules.Grid;
@@ -73,7 +74,7 @@ public final class LootSessions {
     }
 
     public static void openCabinet(ServerPlayer player, BlockPos pos) {
-        if (player.isSpectator() || !player.isAlive() || !(player.serverLevel().getBlockEntity(pos) instanceof CabinetStorage block)) {
+        if (player.isSpectator() || !player.isAlive() || !(player.level().getBlockEntity(pos) instanceof CabinetStorage block)) {
             return;
         }
         close(player, false);
@@ -152,17 +153,17 @@ public final class LootSessions {
     }
 
     public static void act(ServerPlayer player, CompoundTag input) {
-        if (input.getString("action").equals("open")) {
+        if (input.getStringOr("action", "").equals("open")) {
             if (player.containerMenu == player.inventoryMenu) {
                 openPack(player, -1);
             }
             return;
         }
         LootSession session = active(player);
-        if (session == null || !input.hasUUID("session") || !session.id.equals(input.getUUID("session"))) {
+        if (session == null || !session.id.equals(input.read("session", UUIDUtil.CODEC).orElse(null))) {
             return;
         }
-        if (!session.valid() || input.getString("action").equals("close")) {
+        if (!session.valid() || input.getStringOr("action", "").equals("close")) {
             close(player, true);
             return;
         }

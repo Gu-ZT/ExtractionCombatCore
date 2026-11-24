@@ -108,14 +108,14 @@ final class AccessChallenge {
             String type = string(requirement, "type", "");
             switch (type) {
                 case "powered" -> {
-                    if (!player.serverLevel().hasNeighborSignal(pos)) {
+                    if (!player.level().hasNeighborSignal(pos)) {
                         return false;
                     }
                 }
                 case "unlocked", "flag", "mechanism_unlocked" -> {
                     String id = string(requirement, "flag", string(requirement, "id", ""));
                     ResourceLocation flag = ResourceLocation.tryParse(id);
-                    if (flag == null || !GameAccess.flag(player.serverLevel(), flag)) {
+                    if (flag == null || !GameAccess.flag(player.level(), flag)) {
                         return false;
                     }
                 }
@@ -157,7 +157,7 @@ final class AccessChallenge {
         for (InteractionHand hand : InteractionHand.values()) {
             int i = hand.ordinal();
             ItemStack stack = player.getItemInHand(hand);
-            if (hand == InteractionHand.MAIN_HAND && !GameAccess.isEnabled(player, player.getInventory().selected)) {
+            if (hand == InteractionHand.MAIN_HAND && !GameAccess.isEnabled(player, player.getInventory().getSelectedSlot())) {
                 continue;
             }
             ResourceLocation itemId = BuiltInRegistries.ITEM.getKey(stack.getItem());
@@ -252,10 +252,10 @@ final class AccessChallenge {
     }
 
     void input(ServerPlayer player, CompoundTag message) {
-        if (complete() || round != message.getInt("round")) {
+        if (complete() || round != message.getIntOr("round", 0)) {
             return;
         }
-        String action = message.getString("action");
+        String action = message.getStringOr("action", "");
         if (action.equals("release") && type().equals("hold")) {
             held = false;
             elapsed = 0;
@@ -280,7 +280,7 @@ final class AccessChallenge {
                     replay++;
                     elapsed = 0;
                 } else if (action.equals("answer")) {
-                    byte[] answer = message.getByteArray("text_utf8");
+                    byte[] answer = message.getByteArray("text_utf8").orElseGet(() -> new byte[0]);
                     boolean matches = type().equals("password") ? Arrays.equals(answer, solution().getBytes(StandardCharsets.UTF_8))
                         : new String(answer, StandardCharsets.UTF_8).equalsIgnoreCase(solution());
                     if (matches) {

@@ -1,10 +1,11 @@
 package dev.extraction.core.mixin;
 
 import dev.extraction.core.GameAccess;
-import net.minecraft.core.component.DataComponents;
+import net.minecraft.core.Holder;
+import net.minecraft.world.item.Item;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.entity.player.Player;
-import net.minecraft.world.entity.player.StackedContents;
+import net.minecraft.world.entity.player.StackedItemContents;
 import net.minecraft.world.item.ItemStack;
 import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
@@ -17,10 +18,10 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 @Mixin(Inventory.class)
 abstract class InventoryMixin {
     @Shadow @Final public Player player;
-    @Shadow public int selected;
+    @Shadow private int selected;
     @Shadow public abstract ItemStack getItem(int slot);
 
-    @Inject(method = "getSelected", at = @At("HEAD"), cancellable = true)
+    @Inject(method = "getSelectedItem", at = @At("HEAD"), cancellable = true)
     private void extractionMainHand(CallbackInfoReturnable<ItemStack> ci) {
         if (!GameAccess.policy(player).enabled(selected)) {
             ci.setReturnValue(ItemStack.EMPTY);
@@ -65,7 +66,7 @@ abstract class InventoryMixin {
         }
     }
 
-    @Inject(method = "setPickedItem", at = @At("HEAD"), cancellable = true)
+    @Inject(method = "addAndPickItem", at = @At("HEAD"), cancellable = true)
     private void extractionPickWithoutHotbar(ItemStack stack, CallbackInfo ci) {
         if (GameAccess.policy(player).hotbar() == 0) {
             ci.cancel();
@@ -75,22 +76,23 @@ abstract class InventoryMixin {
     @Inject(method = "findSlotMatchingItem", at = @At("HEAD"), cancellable = true)
     private void extractionFindAvailableStack(ItemStack stack, CallbackInfoReturnable<Integer> ci) {
         if (!GameAccess.policy(player).mainEnabled() || GameAccess.policy(player).hotbar() < 9) {
-            ci.setReturnValue(extractionFind(stack, false));
+            ci.setReturnValue(extractionFind(stack.getItemHolder(), stack, false));
         }
     }
 
-    @Inject(method = "findSlotMatchingUnusedItem", at = @At("HEAD"), cancellable = true)
-    private void extractionFindIngredient(ItemStack stack, CallbackInfoReturnable<Integer> ci) {
+    @Inject(method = "findSlotMatchingCraftingIngredient", at = @At("HEAD"), cancellable = true)
+    private void extractionFindIngredient(Holder<Item> item, ItemStack stack, CallbackInfoReturnable<Integer> ci) {
         if (!GameAccess.policy(player).mainEnabled() || GameAccess.policy(player).hotbar() < 9) {
-            ci.setReturnValue(extractionFind(stack, true));
+            ci.setReturnValue(extractionFind(item, stack, true));
         }
     }
 
-    private int extractionFind(ItemStack stack, boolean unusedOnly) {
+    private int extractionFind(Holder<Item> item, ItemStack stack, boolean unusedOnly) {
         for (int slot = 0; slot < 36; slot++) {
             ItemStack found = getItem(slot);
-            if (GameAccess.policy(player).enabled(slot) && !found.isEmpty() && ItemStack.isSameItemSameComponents(stack, found)
-                && (!unusedOnly || !found.isDamaged() && !found.isEnchanted() && !found.has(DataComponents.CUSTOM_NAME))) {
+            if (GameAccess.policy(player).enabled(slot) && !found.isEmpty() && found.is(item)
+                && (stack.isEmpty() || ItemStack.isSameItemSameComponents(stack, found))
+                && (!unusedOnly || Inventory.isUsableForCrafting(found))) {
                 return slot;
             }
         }
@@ -98,7 +100,7 @@ abstract class InventoryMixin {
     }
 
     @Inject(method = "fillStackedContents", at = @At("HEAD"), cancellable = true)
-    private void extractionCountIngredients(StackedContents contents, CallbackInfo ci) {
+    private void extractionCountIngredients(StackedItemContents contents, CallbackInfo ci) {
         if (!GameAccess.policy(player).mainEnabled() || GameAccess.policy(player).hotbar() < 9) {
             for (int slot = 0; slot < 36; slot++) {
                 if (GameAccess.policy(player).enabled(slot)) {
@@ -126,15 +128,6 @@ abstract class InventoryMixin {
             }
         }
         ci.setReturnValue(Math.floorMod(selected, count));
-    }
-
-    @Inject(method = "swapPaint", at = @At("HEAD"), cancellable = true)
-    private void extractionScroll(double direction, CallbackInfo ci) {
-        int count = GameAccess.policy(player).hotbar();
-        if (count < 9) {
-            selected = count == 0 ? 0 : Math.floorMod(selected - (int)Math.signum(direction), count);
-            ci.cancel();
-        }
     }
 
     @Inject(method = "dropAll", at = @At("TAIL"))

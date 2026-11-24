@@ -52,7 +52,7 @@ final class LockPanel {
     }
 
     String type() {
-        return challenge.getString("type");
+        return challenge.getStringOr("type", "");
     }
 
     boolean takesText() {
@@ -60,9 +60,9 @@ final class LockPanel {
     }
 
     void update(CompoundTag view, long clock) {
-        CompoundTag next = view.getCompound("challenge");
-        boolean stageChanged = !next.getString("type").equals(type()) || next.getInt("round") != challenge.getInt("round");
-        boolean play = next.getString("type").equals("audio_morse") && (stageChanged || next.getInt("replay") != challenge.getInt("replay"));
+        CompoundTag next = view.getCompoundOrEmpty("challenge");
+        boolean stageChanged = !next.getStringOr("type", "").equals(type()) || next.getIntOr("round", 0) != challenge.getIntOr("round", 0);
+        boolean play = next.getStringOr("type", "").equals("audio_morse") && (stageChanged || next.getIntOr("replay", 0) != challenge.getIntOr("replay", 0));
         if (stageChanged) {
             held = false;
             table = false;
@@ -73,16 +73,16 @@ final class LockPanel {
         }
         challenge = next;
         if (stageChanged) {
-            morse = next.contains("signals_utf8") ? new String(next.getByteArray("signals_utf8"), StandardCharsets.UTF_8)
-                : next.getString("signals");
+            morse = next.contains("signals_utf8") ? new String(next.getByteArray("signals_utf8").orElseGet(() -> new byte[0]), StandardCharsets.UTF_8)
+                : next.getStringOr("signals", "");
             patternWidth = -1;
             if (type().equals("pattern_morse")) {
                 StringBuilder out = new StringBuilder();
                 for (char signal : morse.toCharArray()) {
                     if (signal == '.') {
-                        out.append(next.getString("dot"));
+                        out.append(next.getStringOr("dot", ""));
                     } else if (signal == '-') {
-                        out.append(next.getString("dash"));
+                        out.append(next.getStringOr("dash", ""));
                     } else {
                         out.append(signal);
                     }
@@ -149,10 +149,10 @@ final class LockPanel {
             drawTable(g, font, left, right, h);
             return;
         }
-        boolean paused = challenge.getInt("pause") > 0;
+        boolean paused = challenge.getIntOr("pause", 0) > 0;
         float since = Mth.clamp((float) (clock - received) + fraction, 0, 10);
-        int duration = Math.max(1, challenge.getInt("duration"));
-        float elapsed = challenge.getInt("elapsed");
+        int duration = Math.max(1, challenge.getIntOr("duration", 0));
+        float elapsed = challenge.getIntOr("elapsed", 0);
         if ((!paused || type().equals("accelerated_decode")) && (!type().equals("hold") || held)) {
             elapsed += since;
         }
@@ -162,7 +162,7 @@ final class LockPanel {
             case "audio_morse" -> {
                 button(g, font, left, y - 13, 75, LootScreen.tr("replay"), true);
                 Cue latest = cueIndex == 0 ? null : cues.get(cueIndex - 1);
-                if (challenge.getBoolean("flash")) {
+                if (challenge.getBooleanOr("flash", false)) {
                     boolean lit = latest != null && audioTick < latest.end;
                     g.fill(left + 81, y - 9, left + 91, y + 1, lit ? 0xffa2ecab : 0xff354039);
                 }
@@ -198,7 +198,7 @@ final class LockPanel {
                 g.fill(left + Math.round(size * .42f), y - 9, left + Math.round(size * .58f), y + 1, 0xffe3eada);
                 int x = left + Math.round((size - 3) * cursor);
                 g.fill(x, y - 13, x + 3, y + 5, paused ? 0xffbd6557 : 0xffe9b66b);
-                float progress = Math.min(1, challenge.getFloat("progress") + since / duration);
+                float progress = Math.min(1, challenge.getFloatOr("progress", 0f) + since / duration);
                 progressBar(g, left, right, y + 18, progress);
                 g.drawCenteredString(font, Math.round(progress * 100) + "%", mid, y + 29, 0xffc9d6cc);
                 g.drawCenteredString(font, LootScreen.tr("decode_hint", ExtractionClient.ACTION.getTranslatedKeyMessage()),
@@ -228,10 +228,10 @@ final class LockPanel {
     }
 
     private void drawRolling(GuiGraphics g, Font font, int left, int right, int y, float elapsed) {
-        int[] periods = challenge.getIntArray("periods");
-        int[] directions = challenge.getIntArray("directions");
-        String alphabet = challenge.getString("alphabet");
-        String target = challenge.getString("target");
+        int[] periods = challenge.getIntArray("periods").orElseGet(() -> new int[0]);
+        int[] directions = challenge.getIntArray("directions").orElseGet(() -> new int[0]);
+        String alphabet = challenge.getStringOr("alphabet", "");
+        String target = challenge.getStringOr("target", "");
         int count = periods.length;
         if (count == 0 || alphabet.isEmpty()) {
             return;
@@ -241,7 +241,7 @@ final class LockPanel {
         g.enableScissor(x, y - 18, x + cell * count, y + 25);
         for (int i = 0; i < count; i++) {
             int xx = x + cell * i;
-            boolean locked = i < challenge.getInt("locked");
+            boolean locked = i < challenge.getIntOr("locked", 0);
             g.fill(xx + 1, y - 18, xx + cell - 1, y + 25, locked ? 0xff2c4936 : 0xff24322b);
             if (locked) {
                 g.drawCenteredString(font, String.valueOf(target.charAt(i)), xx + cell / 2, y, 0xffd5efca);
@@ -257,7 +257,7 @@ final class LockPanel {
                     g.drawCenteredString(font, String.valueOf(symbol), xx + cell / 2, yy, 0xffe4ede0);
                 }
             }
-            if (i == challenge.getInt("locked")) {
+            if (i == challenge.getIntOr("locked", 0)) {
                 g.renderOutline(xx, y - 3, cell, 15, 0xfffbf8ef);
             }
         }
@@ -265,7 +265,7 @@ final class LockPanel {
     }
 
     private void tableButton(GuiGraphics g, Font font, int right, int y) {
-        if (challenge.getBoolean("show_table")) {
+        if (challenge.getBooleanOr("show_table", false)) {
             button(g, font, right - 65, y - 13, 65, LootScreen.tr("table"), true);
         }
     }
@@ -294,14 +294,14 @@ final class LockPanel {
         int y = 45 - scroll;
         for (int i = 0; i < routes.size(); i++) {
             CompoundTag route = routes.get(i);
-            var lines = font.split(Component.literal(route.getString("description")), right - left - 20);
+            var lines = font.split(Component.literal(route.getStringOr("description", "")), right - left - 20);
             int height = 20 + lines.size() * 10;
             rows.add(new Row(i, y, height));
-            boolean available = route.getBoolean("available");
+            boolean available = route.getBooleanOr("available", false);
             g.fill(left, y, right, y + height, selectedRoute == i || mx >= left && mx <= right && my >= y && my < y + height
                 ? 0xff32473a : 0xff26362e);
             g.fill(left, y, left + 2, y + height, available ? 0xffa2c795 : 0xffa37756);
-            g.drawString(font, route.getString("name"), left + 7, y + 4, 0xffeceddf, false);
+            g.drawString(font, route.getStringOr("name", ""), left + 7, y + 4, 0xffeceddf, false);
             if (!available) {
                 g.drawString(font, LootScreen.tr("unavailable"), right - 6 - font.width(LootScreen.tr("unavailable")), y + 4, 0xffcf9771, false);
             }
@@ -345,7 +345,7 @@ final class LockPanel {
     void submit() {
         if (routeMenu()) {
             choose(selectedRoute);
-        } else if (takesText() && !table && challenge.getInt("pause") == 0) {
+        } else if (takesText() && !table && challenge.getIntOr("pause", 0) == 0) {
             CompoundTag message = screen.action("answer");
             message.putByteArray("text_utf8", screen.answer().getBytes(StandardCharsets.UTF_8));
             sendRound(message);
@@ -354,7 +354,7 @@ final class LockPanel {
     }
 
     private void choose(int index) {
-        if (index < routes.size() && routes.get(index).getBoolean("available")) {
+        if (index < routes.size() && routes.get(index).getBooleanOr("available", false)) {
             CompoundTag message = screen.action("route");
             message.putInt("index", index);
             screen.send(message);
@@ -362,8 +362,8 @@ final class LockPanel {
     }
 
     private void sendRound(CompoundTag message) {
-        message.putInt("round", challenge.getInt("round"));
-        if (type().startsWith("sneak") && message.getString("action").equals("press")) {
+        message.putInt("round", challenge.getIntOr("round", 0));
+        if (type().startsWith("sneak") && message.getStringOr("action", "").equals("press")) {
             screen.sendSneakPress(message);
         } else {
             screen.send(message);
@@ -417,7 +417,7 @@ final class LockPanel {
                 return true;
             }
             if (type().endsWith("morse") && y >= cy - 13 && y < cy + 4) {
-                if (challenge.getBoolean("show_table") && x >= right - 65 && x < right) {
+                if (challenge.getBooleanOr("show_table", false) && x >= right - 65 && x < right) {
                     table = true;
                     scroll = 0;
                     screen.positionAnswer();

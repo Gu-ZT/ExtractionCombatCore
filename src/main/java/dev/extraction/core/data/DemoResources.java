@@ -22,7 +22,7 @@ public final class DemoResources implements DataProvider {
         this.output = output;
     }
 
-    public static void gather(GatherDataEvent event) {
+    public static void gather(GatherDataEvent.Client event) {
         event.getGenerator().addProvider(true, new DemoResources(event.getGenerator().getPackOutput()));
     }
 
@@ -118,6 +118,9 @@ public final class DemoResources implements DataProvider {
     }
 
     private void models() {
+        for (String item : List.of("backpack", "cabinet", "service_key", "decoder", "service_hook")) {
+            asset("items/" + item, Map.of("model", Map.of("type", "minecraft:model", "model", id("item/" + item))));
+        }
         asset("sounds", Map.of("morse_dot", Map.of("sounds", List.of(id("morse_dot"))),
             "morse_dash", Map.of("sounds", List.of(id("morse_dash")))));
         String cloth = id("block/canvas");

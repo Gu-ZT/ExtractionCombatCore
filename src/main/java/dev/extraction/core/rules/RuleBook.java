@@ -12,13 +12,14 @@ import net.minecraft.core.HolderLookup;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.resources.FileToIdConverter;
 import net.minecraft.resources.ResourceKey;
+import net.minecraft.tags.TagLoader;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.packs.resources.ResourceManager;
 import net.minecraft.server.packs.resources.SimplePreparableReloadListener;
 import net.minecraft.util.profiling.ProfilerFiller;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
-import net.neoforged.neoforge.event.AddReloadListenerEvent;
+import net.neoforged.neoforge.event.AddServerReloadListenersEvent;
 import org.slf4j.Logger;
 
 import java.io.IOException;
@@ -138,8 +139,8 @@ public final class RuleBook {
         return storage(json, backpack, "layout");
     }
 
-    public static void register(AddReloadListenerEvent event) {
-        event.addListener(new SimplePreparableReloadListener<JsonObject>() {
+    public static void register(AddServerReloadListenersEvent event) {
+        event.addListener(ResourceLocation.fromNamespaceAndPath("extractioncombatcore", "rules"), new SimplePreparableReloadListener<JsonObject>() {
             @Override
             protected JsonObject prepare(ResourceManager manager, ProfilerFiller profiler) {
                 return read(manager);
@@ -148,7 +149,10 @@ public final class RuleBook {
             @Override
             protected void apply(JsonObject files, ResourceManager manager, ProfilerFiller profiler) {
                 HolderLookup.Provider lookup = event.getServerResources().getRegistryLookup();
-                server = resolve(files, event.getConditionContext().getAllTags(Registries.ITEM), lookup);
+                // 原版在资源重载完成后绑定命名标签，当前规则需要本次数据包的标签内容。
+                var loader = new TagLoader<>(TagLoader.ElementLookup.fromFrozenRegistry(
+                    event.getRegistryAccess().lookupOrThrow(Registries.ITEM)), Registries.tagsDirPath(Registries.ITEM));
+                server = resolve(files, loader.build(loader.load(manager)), lookup);
             }
         });
     }
@@ -172,7 +176,7 @@ public final class RuleBook {
         return files;
     }
 
-    static RuleBook resolve(JsonObject files, Map<ResourceLocation, Collection<Holder<Item>>> tags, HolderLookup.Provider registries) {
+    static RuleBook resolve(JsonObject files, Map<ResourceLocation, ? extends Collection<? extends Holder<Item>>> tags, HolderLookup.Provider registries) {
         freezeReferences(files, tags, registries);
         return parse(files, registries);
     }
@@ -306,7 +310,7 @@ public final class RuleBook {
         }
     }
 
-    private static void freezeReferences(JsonObject input, Map<ResourceLocation, Collection<Holder<Item>>> tags,
+    private static void freezeReferences(JsonObject input, Map<ResourceLocation, ? extends Collection<? extends Holder<Item>>> tags,
                                          HolderLookup.Provider registries) {
         group(input, "items").asMap().forEach((key, element) -> {
             JsonObject matcher = object(object(element, key).get("item"), key + ".item");
@@ -364,8 +368,8 @@ public final class RuleBook {
         }
     }
 
-    private static JsonArray resolveTag(Map<ResourceLocation, Collection<Holder<Item>>> tags, String id, String path) {
-        Collection<Holder<Item>> items = tags.get(resource(id, path));
+    private static JsonArray resolveTag(Map<ResourceLocation, ? extends Collection<? extends Holder<Item>>> tags, String id, String path) {
+        Collection<? extends Holder<Item>> items = tags.get(resource(id, path));
         if (items == null) {
             throw invalid(path, "找不到物品标签 " + id);
         }

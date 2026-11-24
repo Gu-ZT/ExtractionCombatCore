@@ -1,5 +1,7 @@
 package dev.extraction.core.server;
 
+import net.minecraft.nbt.NbtOps;
+import net.minecraft.core.UUIDUtil;
 import dev.extraction.core.GameAccess;
 import dev.extraction.core.network.ExtractionNetwork;
 import dev.extraction.core.rules.Grid;
@@ -61,7 +63,7 @@ final class LootSession {
             return true;
         }
         double reach = player.blockInteractionRange() + 1;
-        return player.serverLevel().getBlockEntity(position) == block
+        return player.level().getBlockEntity(position) == block
             && player.getEyePosition().distanceToSqr(Vec3.atCenterOf(position)) <= reach * reach;
     }
 
@@ -107,7 +109,7 @@ final class LootSession {
         track();
         CompoundTag out = new CompoundTag();
         out.putString("kind", "view");
-        out.putUUID("session", id);
+        out.store("session", UUIDUtil.CODEC, id);
         out.putLong("revision", revision);
         boolean locked = cabinet != null && !cabinet.unlocked;
         out.putString("mode", locked ? "lock" : "storage");
@@ -142,7 +144,7 @@ final class LootSession {
                 }
                 CompoundTag slot = new CompoundTag();
                 slot.putInt("slot", i);
-                slot.put("stack", stack.saveOptional(player.registryAccess()));
+                slot.store("stack", ItemStack.OPTIONAL_CODEC, player.registryAccess().createSerializationContext(NbtOps.INSTANCE), stack);
                 slot.putBoolean("recovery", !enabled);
                 if (!stack.isEmpty()) {
                     var style = bag != null ? bag.itemStyle(player, stack) : StoredGrid.style(player, stack, RuleBook.current());
@@ -159,7 +161,7 @@ final class LootSession {
     void closed() {
         CompoundTag out = new CompoundTag();
         out.putString("kind", "closed");
-        out.putUUID("session", id);
+        out.store("session", UUIDUtil.CODEC, id);
         ExtractionNetwork.show(player, out);
     }
 
@@ -224,7 +226,7 @@ final class LootSession {
     }
 
     void action(CompoundTag input) {
-        String action = input.getString("action");
+        String action = input.getStringOr("action", "");
         track();
         message = "";
         if (action.equals("cancel")) {
@@ -232,7 +234,7 @@ final class LootSession {
             challenge = null;
         } else if (cabinet != null && !cabinet.unlocked) {
             if (action.equals("route")) {
-                int index = input.getInt("index");
+                int index = input.getIntOr("index", 0);
                 if (index >= 0 && index < cabinet.routes().size()) {
                     var route = cabinet.routes().get(index).getAsJsonObject();
                     if (AccessChallenge.conditions(route, player, position, false)) {
@@ -245,12 +247,12 @@ final class LootSession {
             finishChallenge();
         } else if (sorting != null) {
             message = "正在整理";
-        } else if (input.getLong("revision") != revision) {
+        } else if (input.getLongOr("revision", 0L) != revision) {
             message = "库存已变化，请重试";
         } else {
             switch (action) {
-                case "select" -> GameAccess.selectBag(player, input.getInt("slot"));
-                case "equip" -> GameAccess.equip(player, input.getInt("slot"));
+                case "select" -> GameAccess.selectBag(player, input.getIntOr("slot", 0));
+                case "equip" -> GameAccess.equip(player, input.getIntOr("slot", 0));
                 case "move", "transfer", "recover" -> move(input, action);
                 default -> {
                 }
@@ -264,7 +266,7 @@ final class LootSession {
             if (!in.contains("slot")) {
                 return null;
             }
-            int slot = in.getInt("slot");
+            int slot = in.getIntOr("slot", 0);
             if (!vanillaSlot(slot)) {
                 return null;
             }
@@ -272,10 +274,10 @@ final class LootSession {
             return stack.isEmpty() ? null : new Source(area, slot, null, StoredGrid.incoming(player, stack, RuleBook.current()));
         }
         StoredGrid grid = grid(area);
-        if (grid == null || !in.hasUUID("id")) {
+        UUID requested = in.read("id", UUIDUtil.CODEC).orElse(null);
+        if (grid == null || requested == null) {
             return null;
         }
-        UUID requested = in.getUUID("id");
         return grid.entries.stream().filter(e -> e.id().equals(requested) && grid.visible(player.getUUID(), e))
             .map(e -> new Source(area, -1, grid, e)).findFirst().orElse(null);
     }
@@ -290,7 +292,7 @@ final class LootSession {
 
     private void move(CompoundTag input, String action) {
         boolean recover = action.equals("recover");
-        String from = recover ? "vanilla" : input.getString("from");
+        String from = recover ? "vanilla" : input.getStringOr("from", "");
         Source source = source(input, from);
         if (source == null) {
             return;
@@ -306,14 +308,14 @@ final class LootSession {
         }
         String to;
         if (manual) {
-            to = input.getString("to");
+            to = input.getStringOr("to", "");
         } else if (from.equals("bag")) {
             to = cabinet == null ? "vanilla" : "cabinet";
         } else {
             to = "bag";
         }
         if (to.equals("vanilla")) {
-            int slot = manual ? input.getInt("dest_slot") : -1;
+            int slot = manual ? input.getIntOr("dest_slot", 0) : -1;
             if ((manual && !vanillaSlot(slot)) || !toVanilla(source, slot, false)) {
                 message = "目标槽位无法放入";
             }
@@ -333,7 +335,7 @@ final class LootSession {
         }
         IntPredicate allowed = section -> target.done(player.getUUID(), section);
         if (manual) {
-            Grid.Entry placed = source.entry.at(input.getInt("section"), input.getInt("x"), input.getInt("y"), input.getInt("rotation"));
+            Grid.Entry placed = source.entry.at(input.getIntOr("section", 0), input.getIntOr("x", 0), input.getIntOr("y", 0), input.getIntOr("rotation", 0));
             if (placed.stack().getCount() > Math.min(placed.stack().getMaxStackSize(), placed.style().stackLimit())
                 || !Grid.fits(target.layout.sections(), contents, placed, allowed)) {
                 message = "目标位置无法放入";

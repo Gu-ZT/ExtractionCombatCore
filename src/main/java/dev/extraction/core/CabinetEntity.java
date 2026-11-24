@@ -2,7 +2,8 @@ package dev.extraction.core;
 
 import dev.extraction.core.server.CabinetStorage;
 import net.minecraft.core.BlockPos;
-import net.minecraft.core.HolderLookup;
+import net.minecraft.world.level.storage.ValueInput;
+import net.minecraft.world.level.storage.ValueOutput;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.level.block.entity.BlockEntity;
@@ -38,18 +39,16 @@ public final class CabinetEntity extends BlockEntity implements CabinetStorage {
     }
 
     @Override
-    protected void saveAdditional(CompoundTag tag, HolderLookup.Provider registries) {
-        super.saveAdditional(tag, registries);
+    protected void saveAdditional(ValueOutput tag) {
+        super.saveAdditional(tag);
         tag.putString("definition", definition.toString());
-        tag.put("contents", contents.copy());
+        tag.store("contents", CompoundTag.CODEC, contents);
     }
 
     @Override
-    protected void loadAdditional(CompoundTag tag, HolderLookup.Provider registries) {
-        super.loadAdditional(tag, registries);
-        if (tag.contains("definition")) {
-            definition = ResourceLocation.parse(tag.getString("definition"));
-        }
-        contents = tag.getCompound("contents");
+    protected void loadAdditional(ValueInput tag) {
+        super.loadAdditional(tag);
+        definition = tag.read("definition", ResourceLocation.CODEC).orElse(ExtractionCore.id("service_cabinet"));
+        contents = tag.read("contents", CompoundTag.CODEC).orElseGet(CompoundTag::new);
     }
 }

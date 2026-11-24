@@ -18,6 +18,7 @@
   "gui.extractioncombatcore.cooldown": "Wait",
   "gui.extractioncombatcore.decode_hint": "Press %s in the white zone to speed up decoding",
   "gui.extractioncombatcore.drag_hint": "Drag to place  ·  Edges rotate  ·  Double-click to transfer",
+  "gui.extractioncombatcore.empty_section": "%s · Empty",
   "gui.extractioncombatcore.equip_hint": "Right-click to exchange equipped packs",
   "gui.extractioncombatcore.equipment": "Offhand and field pack",
   "gui.extractioncombatcore.equipped_pack": "Equipped pack",

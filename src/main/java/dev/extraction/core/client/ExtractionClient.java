@@ -1,5 +1,6 @@
 package dev.extraction.core.client;
 
+import net.minecraft.core.UUIDUtil;
 import com.mojang.blaze3d.platform.InputConstants;
 import dev.extraction.core.GameAccess;
 import dev.extraction.core.network.ExtractionNetwork;
@@ -7,6 +8,7 @@ import dev.extraction.core.rules.RuleBook;
 import net.minecraft.client.KeyMapping;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
 import net.minecraft.client.gui.screens.inventory.InventoryScreen;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.server.packs.resources.ResourceManagerReloadListener;
@@ -18,7 +20,7 @@ import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.neoforge.client.event.ClientPlayerNetworkEvent;
 import net.neoforged.neoforge.client.event.ClientTickEvent;
 import net.neoforged.neoforge.client.event.ContainerScreenEvent;
-import net.neoforged.neoforge.client.event.RegisterClientReloadListenersEvent;
+import net.neoforged.neoforge.client.event.AddClientReloadListenersEvent;
 import net.neoforged.neoforge.client.event.RegisterKeyMappingsEvent;
 import net.neoforged.neoforge.client.event.RenderGuiLayerEvent;
 import net.neoforged.neoforge.client.event.ScreenEvent;
@@ -53,42 +55,42 @@ public final class ExtractionClient {
         }
 
         @SubscribeEvent
-        public static void textures(RegisterClientReloadListenersEvent event) {
-            event.registerReloadListener((ResourceManagerReloadListener) resources -> ItemIcons.reload());
+        public static void textures(AddClientReloadListenersEvent event) {
+            event.addListener(dev.extraction.core.ExtractionCore.id("item_icons"), (ResourceManagerReloadListener) resources -> ItemIcons.reload());
         }
     }
 
     public static void receive(CompoundTag view) {
         Minecraft client = Minecraft.getInstance();
-        String kind = view.getString("kind");
-        if (kind.equals("inventory_policy") || kind.equals("policy") && view.getInt("part") == 0) {
-            GameAccess.setClientPolicy(new GameAccess.InventoryPolicy(view.getBoolean("main_enabled"), view.getInt("hotbar")));
+        String kind = view.getStringOr("kind", "");
+        if (kind.equals("inventory_policy") || kind.equals("policy") && view.getIntOr("part", 0) == 0) {
+            GameAccess.setClientPolicy(new GameAccess.InventoryPolicy(view.getBooleanOr("main_enabled", false), view.getIntOr("hotbar", 0)));
         }
         if (kind.equals("inventory_policy")) {
             return;
         }
         if (kind.equals("policy")) {
-            int part = view.getInt("part");
+            int part = view.getIntOr("part", 0);
             if (part == 0) {
                 POLICY_BYTES.reset();
             }
-            POLICY_BYTES.writeBytes(view.getByteArray("rules_utf8"));
-            if (part + 1 == view.getInt("parts")) {
+            POLICY_BYTES.writeBytes(view.getByteArray("rules_utf8").orElseGet(() -> new byte[0]));
+            if (part + 1 == view.getIntOr("parts", 0)) {
                 pendingRules = POLICY_BYTES.toString(StandardCharsets.UTF_8);
                 POLICY_BYTES.reset();
                 applyPolicy(client);
             }
             return;
         }
-        if (client.player == null || !view.hasUUID("session")) {
+        UUID id = view.read("session", UUIDUtil.CODEC).orElse(null);
+        if (client.player == null || id == null) {
             return;
         }
-        UUID id = view.getUUID("session");
-        if (view.getString("kind").equals("closed")) {
+        if (view.getStringOr("kind", "").equals("closed")) {
             if (client.screen instanceof LootScreen open && id.equals(open.session())) {
                 open.closeFromServer();
             }
-        } else if (view.getString("kind").equals("view") && !id.equals(dismissed)) {
+        } else if (view.getStringOr("kind", "").equals("view") && !id.equals(dismissed)) {
             if (client.screen instanceof LootScreen open && id.equals(open.session())) {
                 open.update(view);
             } else {
@@ -152,9 +154,9 @@ public final class ExtractionClient {
     }
 
     @SubscribeEvent
-    public static void inventoryBackground(ContainerScreenEvent.Render.Background event) {
-        vanillaSlots = true;
-        if (event.getContainerScreen() instanceof InventoryScreen screen) {
+    public static void inventoryBackground(ScreenEvent.Render.Background event) {
+        vanillaSlots = event.getScreen() instanceof AbstractContainerScreen<?>;
+        if (event.getScreen() instanceof InventoryScreen screen) {
             int x = screen.getGuiLeft() + 77;
             int y = screen.getGuiTop() + 8;
             GuiGraphics g = event.getGuiGraphics();

@@ -1,5 +1,6 @@
 package dev.extraction.core.client;
 
+import net.minecraft.core.UUIDUtil;
 import com.mojang.blaze3d.platform.NativeImage;
 import com.mojang.logging.LogUtils;
 import dev.extraction.core.ExtractionCore;
@@ -63,8 +64,8 @@ public final class ClientVisualChecks {
             next(Phase.EXIT);
         }
         if (phase == Phase.EXIT) {
-            mc.level.disconnect();
-            mc.disconnect(new TitleScreen());
+            mc.level.disconnect(net.minecraft.network.chat.Component.literal("退出并重进验收世界"));
+            mc.disconnect(new TitleScreen(), false);
             mc.setScreen(new TitleScreen());
             next(Phase.REOPEN);
             return false;
@@ -111,7 +112,7 @@ public final class ClientVisualChecks {
                 require(screen.storage.destination(move, screen.drag, pointerX, pointerY), "挂钩预览没有目标格");
                 StorageView.Hit touched = screen.storage.hit(pointerX, pointerY);
                 ItemIcons.Cell anchor = ItemIcons.Cell.turn(screen.drag.grip.x(), screen.drag.grip.y(), sample.shape(), screen.drag.rotation);
-                require(move.getInt("x") + anchor.x() == touched.cellX() && move.getInt("y") + anchor.y() == touched.cellY(),
+                require(move.getIntOr("x", 0) + anchor.x() == touched.cellX() && move.getIntOr("y", 0) + anchor.y() == touched.cellY(),
                     "转向后原抓取格偏离鼠标");
                 screen.storage.destination(move, screen.drag, touched.centerX(), touched.centerY());
                 require(screen.drag.rotation == ROTATIONS[direction], "移到格子中央后跳转方向");
@@ -171,15 +172,15 @@ public final class ClientVisualChecks {
             }
             case RESTORED -> {
                 require(at(screen, nuggetId, 2, 0, 0) && at(screen, hookId, 1, 0, 1), "重载世界后背包实例、朝向或位置发生变化");
-                require(StorageView.compounds(screen.view, "packs").stream().anyMatch(p -> p.getInt("slot") == 41 && p.getBoolean("selected")),
+                require(StorageView.compounds(screen.view, "packs").stream().anyMatch(p -> p.getIntOr("slot", 0) == 41 && p.getBooleanOr("selected", false)),
                     "重新进档后装备位或所选背包丢失");
                 screen.onClose();
                 ClientPlaythrough.useCabinet(mc);
                 next(Phase.CABINET);
             }
             case CABINET -> {
-                require(screen.view.getString("mode").equals("storage"), "重新进档后维修柜再次上锁");
-                require(screen.view.contains("cabinet") && StorageView.compounds(screen.view.getCompound("cabinet"), "items").isEmpty(),
+                require(screen.view.getStringOr("mode", "").equals("storage"), "重新进档后维修柜再次上锁");
+                require(screen.view.contains("cabinet") && StorageView.compounds(screen.view.getCompoundOrEmpty("cabinet"), "items").isEmpty(),
                     "重新进档后柜子产生了重复物品");
                 active = false;
                 return true;
@@ -198,8 +199,8 @@ public final class ClientVisualChecks {
     }
 
     private static boolean at(LootScreen screen, UUID id, int x, int y, int rotation) {
-        return StorageView.compounds(screen.view.getCompound("bag"), "items").stream().anyMatch(e -> e.getUUID("id").equals(id)
-            && e.getInt("x") == x && e.getInt("y") == y && e.getInt("rotation") == rotation);
+        return StorageView.compounds(screen.view.getCompoundOrEmpty("bag"), "items").stream().anyMatch(e -> e.read("id", UUIDUtil.CODEC).orElseThrow().equals(id)
+            && e.getIntOr("x", 0) == x && e.getIntOr("y", 0) == y && e.getIntOr("rotation", 0) == rotation);
     }
 
     private static StorageView.Hit find(LootScreen screen, Predicate<StorageView.Hit> predicate) {
@@ -249,10 +250,8 @@ public final class ClientVisualChecks {
         try {
             if (event.getScreen() instanceof LootScreen screen) {
                 if (phase == Phase.ICONS) {
-                    event.getGuiGraphics().pose().pushPose();
-                    event.getGuiGraphics().pose().translate(0, 0, 350);
+                    event.getGuiGraphics().nextStratum();
                     drawIcons(event.getGuiGraphics(), screen);
-                    event.getGuiGraphics().pose().popPose();
                 } else if (phase != Phase.HOLE) {
                     return;
                 }
@@ -289,27 +288,33 @@ public final class ClientVisualChecks {
         }
     }
 
+    private static boolean framePending;
+
     @SubscribeEvent
     public static void sampleFrame(RenderFrameEvent.Post event) {
-        if (!active || !rendered || frame || renderFailure != null) {
+        if (!active || !rendered || frame || framePending || renderFailure != null) {
             return;
         }
         Minecraft mc = Minecraft.getInstance();
-        try (NativeImage image = Screenshot.takeScreenshot(mc.getMainRenderTarget())) {
-            String name = switch (phase) {
-                case ROTATE -> "host-rotation-" + direction;
-                case ICONS -> "host-icon-fallbacks";
-                case INVENTORY -> "host-vanilla-slot";
-                default -> "host-interlocked-items";
-            };
-            image.writeToFile(destination.resolve(name + ".png"));
-            if (phase == Phase.INVENTORY) {
-                verifyVanilla(mc, (InventoryScreen) mc.screen, image);
+        framePending = true;
+        Screenshot.takeScreenshot(mc.getMainRenderTarget(), image -> {
+            try (image) {
+                String name = switch (phase) {
+                    case ROTATE -> "host-rotation-" + direction;
+                    case ICONS -> "host-icon-fallbacks";
+                    case INVENTORY -> "host-vanilla-slot";
+                    default -> "host-interlocked-items";
+                };
+                image.writeToFile(destination.resolve(name + ".png"));
+                if (phase == Phase.INVENTORY) {
+                    verifyVanilla(mc, (InventoryScreen) mc.screen, image);
+                }
+                frame = true;
+            } catch (IOException | RuntimeException | AssertionError ex) {
+                renderFailure = ex;
             }
-            frame = true;
-        } catch (IOException | RuntimeException | AssertionError ex) {
-            renderFailure = ex;
-        }
+            framePending = false;
+        });
     }
 
     private static void verifyVanilla(Minecraft mc, InventoryScreen screen, NativeImage actual) throws IOException {
@@ -327,16 +332,16 @@ public final class ClientVisualChecks {
              InputStream modelInput = mc.getResourceManager().open(model); NativeImage held = NativeImage.read(modelInput)) {
             for (int y = 0; y < 16; y++) {
                 for (int x = 0; x < 16; x++) {
-                    int want = expected.getPixelRGBA(x, y);
+                    int want = expected.getPixel(x, y);
                     if ((want >>> 24) < 240) {
                         continue;
                     }
-                    if (held.getPixelRGBA(x, y) != want) {
+                    if (held.getPixel(x, y) != want) {
                         distinctive++;
                     }
                     int px = (int) ((left + x + .5) * scale);
                     int py = (int) ((top + y + .5) * scale);
-                    int got = actual.getPixelRGBA(px, py);
+                    int got = actual.getPixel(px, py);
                     total++;
                     if (Math.abs((got & 255) - (want & 255)) <= 5 && Math.abs((got >>> 8 & 255) - (want >>> 8 & 255)) <= 5
                         && Math.abs((got >>> 16 & 255) - (want >>> 16 & 255)) <= 5) {

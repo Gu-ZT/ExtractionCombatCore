@@ -1,5 +1,6 @@
 package dev.extraction.core.client;
 
+import net.minecraft.core.UUIDUtil;
 import com.mojang.blaze3d.platform.InputConstants;
 import dev.extraction.core.network.ExtractionNetwork;
 import net.minecraft.Util;
@@ -8,7 +9,8 @@ import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.chat.Component;
-import net.minecraft.network.protocol.game.ServerboundPlayerCommandPacket;
+import net.minecraft.network.protocol.game.ServerboundPlayerInputPacket;
+import net.minecraft.world.entity.player.Input;
 import org.lwjgl.glfw.GLFW;
 
 import java.nio.charset.StandardCharsets;
@@ -33,7 +35,7 @@ final class LootScreen extends Screen {
 
     LootScreen(CompoundTag view) {
         super(tr("title"));
-        session = view.getUUID("session");
+        session = view.read("session", UUIDUtil.CODEC).orElseThrow();
         update(view);
     }
 
@@ -51,7 +53,7 @@ final class LootScreen extends Screen {
     }
 
     private boolean locked() {
-        return view.getString("mode").equals("lock");
+        return view.getStringOr("mode", "").equals("lock");
     }
 
     void update(CompoundTag next) {
@@ -108,8 +110,8 @@ final class LootScreen extends Screen {
     CompoundTag action(String name) {
         CompoundTag data = new CompoundTag();
         data.putString("action", name);
-        data.putUUID("session", session);
-        data.putLong("revision", view.getLong("revision"));
+        data.store("session", UUIDUtil.CODEC, session);
+        data.putLong("revision", view.getLongOr("revision", 0L));
         return data;
     }
 
@@ -130,9 +132,9 @@ final class LootScreen extends Screen {
             default -> sneakInput;
         };
         if (down) {
-            minecraft.player.connection.send(new ServerboundPlayerCommandPacket(minecraft.player, ServerboundPlayerCommandPacket.Action.PRESS_SHIFT_KEY));
+            minecraft.player.connection.send(new ServerboundPlayerInputPacket(new Input(false, false, false, false, false, true, false)));
             send(action);
-            minecraft.player.connection.send(new ServerboundPlayerCommandPacket(minecraft.player, ServerboundPlayerCommandPacket.Action.RELEASE_SHIFT_KEY));
+            minecraft.player.connection.send(new ServerboundPlayerInputPacket(minecraft.player.input.keyPresses));
         }
     }
 
@@ -161,8 +163,8 @@ final class LootScreen extends Screen {
             storage.draw(g, font, width, height, mx, my, clock, drag, moving);
         }
         g.fill(2, height - 21, width - 2, height - 2, 0xff202d26);
-        String message = view.getString("message");
-        if (view.getBoolean("organizing")) {
+        String message = view.getStringOr("message", "");
+        if (view.getBooleanOr("organizing", false)) {
             g.drawString(font, tr("organizing"), 9, height - 15, 0xffedcca1, false);
             g.drawString(font, tr("cancel"), width - 10 - font.width(tr("cancel")), height - 15, 0xffe4e6d7, false);
         } else if (!message.isEmpty()) {
@@ -185,7 +187,7 @@ final class LootScreen extends Screen {
             onClose();
             return true;
         }
-        if (view.getBoolean("organizing") && my >= height - 21 && mx >= width - 80) {
+        if (view.getBooleanOr("organizing", false) && my >= height - 21 && mx >= width - 80) {
             send(action("cancel"));
             return true;
         }
@@ -195,7 +197,7 @@ final class LootScreen extends Screen {
             }
             return super.mouseClicked(x, y, button);
         }
-        if (view.getBoolean("organizing")) {
+        if (view.getBooleanOr("organizing", false)) {
             return true;
         }
         int pack = storage.nextPack(mx, my);
@@ -233,7 +235,7 @@ final class LootScreen extends Screen {
             lastClick = hit;
             lastClickTime = now;
             drag = new StorageView.Drag(hit);
-            dragRevision = view.getLong("revision");
+            dragRevision = view.getLongOr("revision", 0L);
             moving = false;
             startX = mx;
             startY = my;

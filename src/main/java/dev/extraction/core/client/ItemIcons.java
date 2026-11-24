@@ -1,20 +1,11 @@
 package dev.extraction.core.client;
 
 import com.mojang.blaze3d.platform.NativeImage;
-import com.mojang.blaze3d.systems.RenderSystem;
-import com.mojang.blaze3d.vertex.BufferBuilder;
-import com.mojang.blaze3d.vertex.BufferUploader;
-import com.mojang.blaze3d.vertex.DefaultVertexFormat;
-import com.mojang.blaze3d.vertex.Tesselator;
-import com.mojang.blaze3d.vertex.VertexFormat;
 import com.mojang.logging.LogUtils;
-import com.mojang.math.Axis;
 import dev.extraction.core.rules.Shape;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
-import net.minecraft.client.renderer.GameRenderer;
 import net.minecraft.resources.ResourceLocation;
-import org.joml.Matrix4f;
 import org.slf4j.Logger;
 
 import java.io.IOException;
@@ -71,9 +62,9 @@ final class ItemIcons {
         double scale = 16d / Math.max(icon.width(), icon.height());
         int w = Math.max(1, (int) Math.round(icon.width() * scale));
         int h = Math.max(1, (int) Math.round(icon.height() * scale));
-        RenderSystem.enableBlend();
-        g.blit(icon.file(), x + (16 - w) / 2, y + (16 - h) / 2, w, h,
-            0f, 0f, icon.width(), icon.height(), icon.width(), icon.height());
+        int left = x + (16 - w) / 2;
+        int top = y + (16 - h) / 2;
+        g.blit(icon.file(), left, top, left + w, top + h, 0, 1, 0, 1);
         return true;
     }
 
@@ -83,17 +74,12 @@ final class ItemIcons {
         int cell = StorageView.CELL;
         int w = base.width() * cell;
         int h = base.height() * cell;
-        g.pose().pushPose();
+        g.pose().pushMatrix();
         g.pose().translate(x + (rotation == 1 ? h : rotation == 2 ? w : 0),
-            y + (rotation == 2 ? h : rotation == 3 ? w : 0), 0);
-        g.pose().mulPose(Axis.ZP.rotationDegrees(90f * rotation));
+            y + (rotation == 2 ? h : rotation == 3 ? w : 0));
+        g.pose().rotate((float) (Math.PI / 2 * rotation));
         if (icon != null) {
-            RenderSystem.enableBlend();
             // 按连续占格绘制对应 UV，孔位保留给夹在其中的其他物品。
-            RenderSystem.setShaderTexture(0, icon.file());
-            RenderSystem.setShader(GameRenderer::getPositionTexShader);
-            Matrix4f pose = g.pose().last().pose();
-            BufferBuilder quads = Tesselator.getInstance().begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION_TEX);
             for (int row = 0; row < base.height(); row++) {
                 String cells = base.rows().get(row);
                 for (int col = 0; col < cells.length();) {
@@ -109,16 +95,12 @@ final class ItemIcons {
                     float v1 = (float) row / base.height();
                     float u2 = (float) end / base.width();
                     float v2 = (float) (row + 1) / base.height();
-                    quads.addVertex(pose, col * cell, row * cell, 0).setUv(u1, v1);
-                    quads.addVertex(pose, col * cell, (row + 1) * cell, 0).setUv(u1, v2);
-                    quads.addVertex(pose, end * cell, (row + 1) * cell, 0).setUv(u2, v2);
-                    quads.addVertex(pose, end * cell, row * cell, 0).setUv(u2, v1);
+                    g.blit(icon.file(), col * cell, row * cell, end * cell, (row + 1) * cell, u1, u2, v1, v2);
                     col = end;
                 }
             }
-            BufferUploader.drawWithShader(quads.buildOrThrow());
         }
-        g.pose().popPose();
+        g.pose().popMatrix();
         if (icon == null) {
             int first = 0;
             while (!base.contains(first % base.width(), first / base.width())) {

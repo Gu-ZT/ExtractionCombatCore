@@ -191,7 +191,7 @@ class GridTest {
               "items":{
                 "foo:a_tools":{"item":{"items":["minecraft:tripwire_hook","minecraft:compass"]},"grid_stack_limit":3},
                 "foo:b_hook":{"item":{"items":"minecraft:tripwire_hook"},"quality":"foo:precision"},
-                "foo:c_model":{"item":{"items":"minecraft:tripwire_hook","components":{"minecraft:custom_model_data":7}},"quality":{"id":"disable"}}
+                "foo:c_model":{"item":{"items":"minecraft:tripwire_hook","components":{"minecraft:custom_model_data":{"floats":[7]}}},"quality":{"id":"disable"}}
               },
               "containers":{"foo:locker":{"sections":[{"id":"main","shape":["X"]}],
                 "access":{"routes":[{"steps":[{"type":"password","answer":"0472"}]}]}}}
@@ -204,7 +204,7 @@ class GridTest {
         Grid.Style normal = book.item(hook);
         assertEquals("精工", normal.quality().orElseThrow().name());
         assertEquals(Grid.Style.DEFAULT.stackLimit(), normal.stackLimit());
-        hook.set(DataComponents.CUSTOM_MODEL_DATA, new CustomModelData(7));
+        hook.set(DataComponents.CUSTOM_MODEL_DATA, new CustomModelData(List.of(7f), List.of(), List.of(), List.of()));
         assertTrue(book.item(hook).quality().orElseThrow().disabled());
         RuleBook.installPublicItems(book.publicItems(), registries);
         RuleBook previous = RuleBook.client();

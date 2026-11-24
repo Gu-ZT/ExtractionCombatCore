@@ -1,10 +1,10 @@
 package dev.extraction.core;
 
-import net.minecraft.network.protocol.game.ClientboundSetCarriedItemPacket;
+import net.minecraft.network.protocol.game.ClientboundSetHeldSlotPacket;
 import net.minecraft.server.level.ServerPlayer;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
-import net.neoforged.neoforge.common.util.TriState;
+import net.minecraft.util.TriState;
 import net.neoforged.neoforge.event.entity.player.PlayerInteractEvent;
 import net.neoforged.neoforge.event.level.ExplosionEvent;
 import net.neoforged.neoforge.event.tick.PlayerTickEvent;
@@ -27,10 +27,10 @@ public final class MapInteractions {
 
     @SubscribeEvent
     public static void enforceSelection(PlayerTickEvent.Pre event) {
-        if (event.getEntity() instanceof ServerPlayer player && player.getInventory().selected != 0
-            && !GameAccess.enabled(player.getInventory().selected)) {
-            player.getInventory().selected = 0;
-            player.connection.send(new ClientboundSetCarriedItemPacket(0));
+        if (event.getEntity() instanceof ServerPlayer player && player.getInventory().getSelectedSlot() != 0
+            && !GameAccess.enabled(player.getInventory().getSelectedSlot())) {
+            player.getInventory().setSelectedSlot(0);
+            player.connection.send(new ClientboundSetHeldSlotPacket(0));
         }
     }
 }
