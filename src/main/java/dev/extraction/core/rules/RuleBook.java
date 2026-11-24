@@ -6,19 +6,20 @@ import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.mojang.logging.LogUtils;
 import com.mojang.serialization.JsonOps;
-import net.minecraft.advancements.critereon.ItemPredicate;
+import net.minecraft.advancements.predicates.ItemPredicate;
 import net.minecraft.core.Holder;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.resources.FileToIdConverter;
 import net.minecraft.resources.ResourceKey;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 import net.minecraft.server.packs.resources.ResourceManager;
 import net.minecraft.server.packs.resources.SimplePreparableReloadListener;
 import net.minecraft.util.profiling.ProfilerFiller;
+import net.minecraft.tags.TagLoader;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
-import net.neoforged.neoforge.event.AddReloadListenerEvent;
+import net.neoforged.neoforge.event.AddServerReloadListenersEvent;
 import org.slf4j.Logger;
 
 import java.io.IOException;
@@ -51,13 +52,13 @@ public final class RuleBook {
     private static volatile RuleBook server = EMPTY;
     private static volatile RuleBook client = EMPTY;
     private final JsonObject definitions;
-    private final Map<ResourceLocation, Storage> backpacks;
-    private final Map<ResourceLocation, Storage> containers;
+    private final Map<Identifier, Storage> backpacks;
+    private final Map<Identifier, Storage> containers;
     private final List<ItemRule> items;
-    private final Set<List<ResourceLocation>> reported = ConcurrentHashMap.newKeySet();
+    private final Set<List<Identifier>> reported = ConcurrentHashMap.newKeySet();
 
-    private RuleBook(JsonObject definitions, Map<ResourceLocation, Storage> backpacks,
-                     Map<ResourceLocation, Storage> containers, List<ItemRule> items) {
+    private RuleBook(JsonObject definitions, Map<Identifier, Storage> backpacks,
+                     Map<Identifier, Storage> containers, List<ItemRule> items) {
         this.definitions = definitions;
         this.backpacks = Map.copyOf(backpacks);
         this.containers = Map.copyOf(containers);
@@ -72,11 +73,11 @@ public final class RuleBook {
         return client;
     }
 
-    public Optional<Storage> backpack(ResourceLocation id) {
+    public Optional<Storage> backpack(Identifier id) {
         return Optional.ofNullable(backpacks.get(id));
     }
 
-    public Optional<Storage> container(ResourceLocation id) {
+    public Optional<Storage> container(Identifier id) {
         return Optional.ofNullable(containers.get(id));
     }
 
@@ -92,7 +93,7 @@ public final class RuleBook {
         List<ItemRule> winners = matches.stream().filter(candidate -> matches.stream().noneMatch(other ->
             other != candidate && other.subsetOf(candidate) && !candidate.subsetOf(other))).toList();
         if (winners.size() > 1) {
-            List<ResourceLocation> ids = winners.stream().map(ItemRule::id).toList();
+            List<Identifier> ids = winners.stream().map(ItemRule::id).toList();
             if (reported.add(ids)) {
                 LOGGER.warn("物品定义的匹配范围等价或无法比较，采用 {}，候选为 {}", ids.getFirst(), ids);
             }
@@ -138,8 +139,8 @@ public final class RuleBook {
         return storage(json, backpack, "layout");
     }
 
-    public static void register(AddReloadListenerEvent event) {
-        event.addListener(new SimplePreparableReloadListener<JsonObject>() {
+    public static void register(AddServerReloadListenersEvent event) {
+        event.addListener(dev.extraction.core.ExtractionCore.id("rules"), new SimplePreparableReloadListener<JsonObject>() {
             @Override
             protected JsonObject prepare(ResourceManager manager, ProfilerFiller profiler) {
                 return read(manager);
@@ -148,7 +149,11 @@ public final class RuleBook {
             @Override
             protected void apply(JsonObject files, ResourceManager manager, ProfilerFiller profiler) {
                 HolderLookup.Provider lookup = event.getServerResources().getRegistryLookup();
-                server = resolve(files, event.getConditionContext().getAllTags(Registries.ITEM), lookup);
+                // 本次重载的命名标签在所有监听器返回后才绑定。按原版规则读取本次资源包的标签内容。
+                var itemLookup = lookup.lookupOrThrow(Registries.ITEM);
+                var loader = new TagLoader<Holder<Item>>((id, required) -> itemLookup.get(ResourceKey.create(Registries.ITEM, id)),
+                    Registries.tagsDirPath(Registries.ITEM));
+                server = resolve(files, new HashMap<>(loader.build(loader.load(manager))), lookup);
             }
         });
     }
@@ -172,7 +177,7 @@ public final class RuleBook {
         return files;
     }
 
-    static RuleBook resolve(JsonObject files, Map<ResourceLocation, Collection<Holder<Item>>> tags, HolderLookup.Provider registries) {
+    static RuleBook resolve(JsonObject files, Map<Identifier, Collection<Holder<Item>>> tags, HolderLookup.Provider registries) {
         freezeReferences(files, tags, registries);
         return parse(files, registries);
     }
@@ -182,11 +187,11 @@ public final class RuleBook {
     }
 
     private static RuleBook parse(JsonObject input, HolderLookup.Provider registries) {
-        Map<ResourceLocation, Grid.Quality> qualities = new HashMap<>();
+        Map<Identifier, Grid.Quality> qualities = new HashMap<>();
         group(input, "qualities").asMap().forEach((key, data) ->
             qualities.put(resource(key, "qualities"), quality(object(data, key), key)));
-        Map<ResourceLocation, Storage> bags = new HashMap<>();
-        Map<ResourceLocation, Storage> cabinets = new HashMap<>();
+        Map<Identifier, Storage> bags = new HashMap<>();
+        Map<Identifier, Storage> cabinets = new HashMap<>();
         group(input, "backpacks").asMap().forEach((key, data) ->
             bags.put(resource(key, "backpacks"), storage(object(data, key), true, key)));
         group(input, "containers").asMap().forEach((key, data) ->
@@ -241,7 +246,7 @@ public final class RuleBook {
         return new Storage(sections, outer, data);
     }
 
-    private static Grid.Style style(JsonObject input, Map<ResourceLocation, Grid.Quality> qualities, String path) {
+    private static Grid.Style style(JsonObject input, Map<Identifier, Grid.Quality> qualities, String path) {
         Shape shape = Shape.SINGLE;
         if (input.has("shape")) {
             try {
@@ -281,7 +286,7 @@ public final class RuleBook {
             icon(icons, "grid", path), icon(icons, "vanilla_slot", path), quality);
     }
 
-    private static Optional<ResourceLocation> icon(JsonObject icons, String key, String path) {
+    private static Optional<Identifier> icon(JsonObject icons, String key, String path) {
         return icons.has(key) ? Optional.of(resource(string(icons, key, path + ".icons"), path + ".icons." + key)) : Optional.empty();
     }
 
@@ -293,7 +298,7 @@ public final class RuleBook {
         return new Grid.Quality(string(obj, "name", path), Integer.parseInt(color.substring(1), 16), false);
     }
 
-    private record ItemRule(ResourceLocation id, ItemPredicate predicate, JsonObject matcher, Grid.Style style) {
+    private record ItemRule(Identifier id, ItemPredicate predicate, JsonObject matcher, Grid.Style style) {
         private boolean subsetOf(ItemRule other) {
             if (other.predicate.items().isPresent() && (predicate.items().isEmpty()
                 || !predicate.items().get().stream().allMatch(other.predicate.items().get()::contains))) {
@@ -306,7 +311,7 @@ public final class RuleBook {
         }
     }
 
-    private static void freezeReferences(JsonObject input, Map<ResourceLocation, Collection<Holder<Item>>> tags,
+    private static void freezeReferences(JsonObject input, Map<Identifier, Collection<Holder<Item>>> tags,
                                          HolderLookup.Provider registries) {
         group(input, "items").asMap().forEach((key, element) -> {
             JsonObject matcher = object(object(element, key).get("item"), key + ".item");
@@ -333,7 +338,7 @@ public final class RuleBook {
                     }
                 }
                 if (definition.has("loot_table")) {
-                    ResourceLocation id = resource(string(definition, "loot_table", key), key + ".loot_table");
+                    Identifier id = resource(string(definition, "loot_table", key), key + ".loot_table");
                     if (registries.lookupOrThrow(Registries.LOOT_TABLE).get(ResourceKey.create(Registries.LOOT_TABLE, id)).isEmpty()) {
                         throw invalid(key + ".loot_table", "找不到战利品表 " + id);
                     }
@@ -348,7 +353,7 @@ public final class RuleBook {
                                 JsonObject req = object(requirement, path);
                                 String type = string(req, "type", path);
                                 if (type.equals("held_item")) {
-                                    ResourceLocation id = resource(string(req, "item", path), path + ".item");
+                                    Identifier id = resource(string(req, "item", path), path + ".item");
                                     if (registries.lookupOrThrow(Registries.ITEM).get(ResourceKey.create(Registries.ITEM, id)).isEmpty()) {
                                         throw invalid(path + ".item", "找不到物品 " + id);
                                     }
@@ -364,13 +369,13 @@ public final class RuleBook {
         }
     }
 
-    private static JsonArray resolveTag(Map<ResourceLocation, Collection<Holder<Item>>> tags, String id, String path) {
+    private static JsonArray resolveTag(Map<Identifier, Collection<Holder<Item>>> tags, String id, String path) {
         Collection<Holder<Item>> items = tags.get(resource(id, path));
         if (items == null) {
             throw invalid(path, "找不到物品标签 " + id);
         }
         JsonArray values = new JsonArray();
-        items.stream().map(holder -> holder.unwrapKey().orElseThrow().location().toString()).sorted().forEach(values::add);
+        items.stream().map(holder -> holder.unwrapKey().orElseThrow().identifier().toString()).sorted().forEach(values::add);
         return values;
     }
 }

@@ -3,7 +3,7 @@ package dev.extraction.core.rules;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 
 import java.nio.charset.StandardCharsets;
 
@@ -63,8 +63,8 @@ final class DefinitionFields {
         throw invalid(path + "." + key, "必须是 " + min + " 至 " + max + " 的整数");
     }
 
-    static ResourceLocation resource(String value, String path) {
-        ResourceLocation id = ResourceLocation.tryParse(value);
+    static Identifier resource(String value, String path) {
+        Identifier id = Identifier.tryParse(value);
         if (id == null) {
             throw invalid(path, "无效资源 ID " + value);
         }

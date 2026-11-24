@@ -5,7 +5,7 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.core.registries.BuiltInRegistries;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 import net.minecraft.tags.TagKey;
 import net.minecraft.world.item.ItemStack;
 
@@ -24,8 +24,8 @@ public final class Grid {
 
     public record Quality(String name, int color, boolean disabled) {}
 
-    public record Style(Shape shape, boolean rotatable, int stackLimit, Optional<ResourceLocation> gridIcon,
-                        Optional<ResourceLocation> slotIcon, Optional<Quality> quality) {
+    public record Style(Shape shape, boolean rotatable, int stackLimit, Optional<Identifier> gridIcon,
+                        Optional<Identifier> slotIcon, Optional<Quality> quality) {
         public static final Style DEFAULT = new Style(Shape.SINGLE, false, Integer.MAX_VALUE,
             Optional.empty(), Optional.empty(), Optional.empty());
 
@@ -60,8 +60,8 @@ public final class Grid {
         }
     }
 
-    public record Section(String id, Shape shape, Optional<ResourceLocation> acceptsTag, Optional<Set<ResourceLocation>> acceptedItems) {
-        public Section(String id, Shape shape, Optional<ResourceLocation> acceptsTag) {
+    public record Section(String id, Shape shape, Optional<Identifier> acceptsTag, Optional<Set<Identifier>> acceptedItems) {
+        public Section(String id, Shape shape, Optional<Identifier> acceptsTag) {
             this(id, shape, acceptsTag, Optional.empty());
         }
 
@@ -86,10 +86,10 @@ public final class Grid {
         }
 
         public static Section fromJson(JsonObject json) {
-            Optional<Set<ResourceLocation>> resolved = Optional.ofNullable(json.getAsJsonArray("_resolved_items")).map(array -> {
-                Set<ResourceLocation> ids = new LinkedHashSet<>();
+            Optional<Set<Identifier>> resolved = Optional.ofNullable(json.getAsJsonArray("_resolved_items")).map(array -> {
+                Set<Identifier> ids = new LinkedHashSet<>();
                 for (JsonElement element : array) {
-                    ids.add(ResourceLocation.parse(element.getAsString()));
+                    ids.add(Identifier.parse(element.getAsString()));
                 }
                 return Set.copyOf(ids);
             });
@@ -132,8 +132,8 @@ public final class Grid {
         return Shape.of(rows);
     }
 
-    static Optional<ResourceLocation> id(JsonObject obj, String key) {
-        return Optional.ofNullable(obj.get(key)).map(value -> ResourceLocation.parse(value.getAsString()));
+    static Optional<Identifier> id(JsonObject obj, String key) {
+        return Optional.ofNullable(obj.get(key)).map(value -> Identifier.parse(value.getAsString()));
     }
 
     /** 检查目标位置；调用方应从占用表中移除正在拖动的原件。 */

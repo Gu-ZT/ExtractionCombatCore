@@ -1,9 +1,10 @@
 package dev.extraction.core;
 
+import net.minecraft.core.UUIDUtil;
 import net.minecraft.core.component.DataComponents;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.chat.Component;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.player.Player;
@@ -25,7 +26,7 @@ public final class GameAccess {
 
     private GameAccess() {}
 
-    public static ItemStack bound(Item item, ResourceLocation type) {
+    public static ItemStack bound(Item item, Identifier type) {
         ItemStack stack = new ItemStack(item);
         CustomData.update(DataComponents.CUSTOM_DATA, stack, tag -> tag.putString(TYPE, type.toString()));
         stack.set(DataComponents.ITEM_NAME, Component.translatableWithFallback(
@@ -33,12 +34,12 @@ public final class GameAccess {
         return stack;
     }
 
-    static ResourceLocation definition(ItemStack stack, String fallback) {
+    static Identifier definition(ItemStack stack, String fallback) {
         CompoundTag tag = stack.getOrDefault(DataComponents.CUSTOM_DATA, CustomData.EMPTY).copyTag();
-        return tag.contains(TYPE) ? ResourceLocation.parse(tag.getString(TYPE)) : ExtractionCore.id(fallback);
+        return tag.contains(TYPE) ? Identifier.parse(tag.getStringOr(TYPE, "")) : ExtractionCore.id(fallback);
     }
 
-    public static ResourceLocation bagType(ItemStack stack) {
+    public static Identifier bagType(ItemStack stack) {
         return definition(stack, "field_pack");
     }
 
@@ -48,24 +49,25 @@ public final class GameAccess {
 
     public static Optional<UUID> instanceId(ItemStack stack) {
         CompoundTag tag = stack.getOrDefault(DataComponents.CUSTOM_DATA, CustomData.EMPTY).copyTag();
-        return tag.hasUUID(INSTANCE) ? Optional.of(tag.getUUID(INSTANCE)) : Optional.empty();
+        return tag.read(INSTANCE, UUIDUtil.CODEC);
     }
 
     public static CompoundTag bagData(ServerPlayer player, ItemStack stack) {
         CompoundTag tag = stack.getOrDefault(DataComponents.CUSTOM_DATA, CustomData.EMPTY).copyTag();
-        return tag.hasUUID(INSTANCE) ? WorldContents.get(player.serverLevel()).pack(tag.getUUID(INSTANCE)) : new CompoundTag();
+        return tag.read(INSTANCE, UUIDUtil.CODEC).map(id -> WorldContents.get(player.level()).pack(id)).orElseGet(CompoundTag::new);
     }
 
     public static void saveBag(ServerPlayer player, ItemStack stack, CompoundTag data) {
         CompoundTag tag = stack.getOrDefault(DataComponents.CUSTOM_DATA, CustomData.EMPTY).copyTag();
-        UUID id = tag.hasUUID(INSTANCE) ? tag.getUUID(INSTANCE) : UUID.randomUUID();
-        if (!tag.hasUUID(INSTANCE)) {
-            CustomData.update(DataComponents.CUSTOM_DATA, stack, value -> value.putUUID(INSTANCE, id));
+        Optional<UUID> instance = tag.read(INSTANCE, UUIDUtil.CODEC);
+        UUID id = instance.orElseGet(UUID::randomUUID);
+        if (instance.isEmpty()) {
+            CustomData.update(DataComponents.CUSTOM_DATA, stack, value -> value.store(INSTANCE, UUIDUtil.CODEC, id));
         }
-        WorldContents.get(player.serverLevel()).savePack(id, data);
+        WorldContents.get(player.level()).savePack(id, data);
     }
 
-    public static boolean flag(ServerLevel level, ResourceLocation id) {
+    public static boolean flag(ServerLevel level, Identifier id) {
         return WorldContents.get(level).flag(id);
     }
 
@@ -100,7 +102,7 @@ public final class GameAccess {
     }
 
     public static InventoryPolicy policy(Player player) {
-        return player.level().isClientSide ? clientPolicy : serverPolicy();
+        return player.level().isClientSide() ? clientPolicy : serverPolicy();
     }
 
     public static InventoryPolicy clientPolicy() {
@@ -141,7 +143,7 @@ public final class GameAccess {
     }
 
     public static int selectedBag(ServerPlayer player) {
-        int index = player.getPersistentData().getInt(SELECTED);
+        int index = player.getPersistentData().getIntOr(SELECTED, 0);
         if (player.getPersistentData().contains(SELECTED) && enabled(index) && isBag(itemAt(player, index))) {
             return index;
         }

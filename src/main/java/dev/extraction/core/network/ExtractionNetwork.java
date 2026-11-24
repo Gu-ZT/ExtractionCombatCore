@@ -12,10 +12,10 @@ import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.codec.ByteBufCodecs;
 import net.minecraft.network.codec.StreamCodec;
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.player.Player;
-import net.neoforged.neoforge.network.PacketDistributor;
+import net.neoforged.neoforge.client.network.ClientPacketDistributor;
 import net.neoforged.neoforge.network.event.RegisterPayloadHandlersEvent;
 import net.neoforged.neoforge.network.handling.IPayloadContext;
 
@@ -30,7 +30,7 @@ public final class ExtractionNetwork {
     }
 
     public static void send(CompoundTag message) {
-        PacketDistributor.sendToServer(new Action(message));
+        ClientPacketDistributor.sendToServer(new Action(message));
     }
 
     public static void show(ServerPlayer player, CompoundTag message) {
@@ -50,7 +50,7 @@ public final class ExtractionNetwork {
     }
 
     private record Action(CompoundTag message) implements IServerboundPacket {
-        private static final Type<Action> TYPE = new Type<>(ResourceLocation.fromNamespaceAndPath("extractioncombatcore", "action"));
+        private static final Type<Action> TYPE = new Type<>(Identifier.fromNamespaceAndPath("extractioncombatcore", "action"));
         private static final StreamCodec<ByteBuf, Action> CODEC =
             ByteBufCodecs.COMPOUND_TAG.map(Action::new, Action::message);
 

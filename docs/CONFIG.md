@@ -1,6 +1,6 @@
 # 地图作者使用说明
 
-在 Minecraft 1.21.1 客户端和服务端安装本模组与 AnvilLib 2.0.0，进入创造模式，在「搜刮演示套件」页取得野外随身包、通电维修柜、钥匙和译码器。
+在 Minecraft 26.2 客户端和服务端安装本模组与 AnvilLib 2.0.0，进入创造模式，在「搜刮演示套件」页取得野外随身包、通电维修柜、钥匙和译码器。
 
 ## 试玩维修柜
 
@@ -11,7 +11,7 @@
 
 ## 玩家库存配置
 
-世界的 `serverconfig/extractioncombatcore-server.toml` 管理库存限制。主背包与快捷栏可独立设置。禁用槽中的旧物可以取回，护甲和副手仍可使用。
+服务端实例中的 `config/extractioncombatcore-server.toml` 管理库存限制。主背包与快捷栏可独立设置。禁用槽中的旧物可以取回，护甲和副手仍可使用。
 
 ```toml
 vanilla_main_inventory_enabled = true
@@ -21,6 +21,8 @@ enabled_hotbar_slots = 9
 快捷栏数量范围为 0 至 9，从左向右开放。地上拾取的物品优先进入允许使用的原版槽，其余尝试直接放入装备的背包。超出容量的部分留在原地。
 
 ## 数据包与指令
+
+Minecraft 26.2 的数据包格式为 107.1，资源包格式为 88.0。数据包根目录的 `pack.mcmeta` 可将 `min_format` 和 `max_format` 都设为 `[107, 1]`。覆盖物品模型时，在 `assets/<命名空间>/items/<物品名>.json` 中用 `minecraft:model` 指向相应模型资源。
 
 在 `data/<命名空间>/extraction/` 下分别创建 `backpacks`、`containers`、`items` 和 `qualities`。定义 ID 使用命名空间和文件相对路径。作者可通过下表中的管理员命令取得绑定指定定义的物品或设置机关。背包和柜子创建后保留自己的布局；测试新布局时请重新领取和放置实例。
 

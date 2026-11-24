@@ -3,7 +3,9 @@ package dev.extraction.core;
 import dev.extraction.core.server.LootSessions;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.InteractionHand;
-import net.minecraft.world.InteractionResultHolder;
+import net.minecraft.world.InteractionResult;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.entity.EquipmentSlot;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.core.component.DataComponents;
@@ -18,18 +20,17 @@ final class FieldPack extends Item {
     }
 
     @Override
-    public void inventoryTick(ItemStack stack, Level level, Entity entity, int slot, boolean selected) {
+    public void inventoryTick(ItemStack stack, ServerLevel level, Entity entity, EquipmentSlot slot) {
         if (entity instanceof ServerPlayer player && !stack.getOrDefault(DataComponents.CUSTOM_DATA, CustomData.EMPTY).contains("extraction_instance")) {
             LootSessions.initializeBag(player, stack);
         }
     }
 
     @Override
-    public InteractionResultHolder<ItemStack> use(Level level, Player player, InteractionHand hand) {
-        ItemStack stack = player.getItemInHand(hand);
+    public InteractionResult use(Level level, Player player, InteractionHand hand) {
         if (player instanceof ServerPlayer serverPlayer) {
-            LootSessions.openPack(serverPlayer, hand == InteractionHand.OFF_HAND ? 40 : player.getInventory().selected);
+            LootSessions.openPack(serverPlayer, hand == InteractionHand.OFF_HAND ? 40 : player.getInventory().getSelectedSlot());
         }
-        return InteractionResultHolder.sidedSuccess(stack, level.isClientSide);
+        return InteractionResult.SUCCESS;
     }
 }

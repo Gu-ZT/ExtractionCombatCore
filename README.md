@@ -10,7 +10,7 @@ English | [简体中文](README.zh_CN.md)
 
 </div>
 
-This branch targets Minecraft 1.21.1 on NeoForge with AnvilLib 2.0.0. Build it with `./gradlew build`, then open the Extraction Demo Equipment creative tab. [Map author guide (Chinese)](docs/CONFIG.md)
+This branch targets Minecraft 26.2 on NeoForge with AnvilLib 2.0.0. Build it with `./gradlew build`, then open the Extraction Demo Equipment creative tab. [Map author guide (Chinese)](docs/CONFIG.md)
 
 ## A minute at the service cabinet
 

@@ -3,6 +3,8 @@ package dev.extraction.core.client;
 import dev.extraction.core.GameAccess;
 import dev.extraction.core.InventoryGameTests;
 import net.minecraft.client.Minecraft;
+import org.lwjgl.glfw.GLFW;
+import org.lwjgl.glfw.GLFWScrollCallback;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -37,15 +39,21 @@ final class ClientInventoryChecks {
                 throw new AssertionError("原版栏遮罩未使用服务端库存策略 " + count);
             }
             var inventory = game.player.getInventory();
-            inventory.selected = 2;
-            if (count == 0 && !inventory.getSelected().isEmpty()) {
+            inventory.setSelectedSlot(2);
+            if (count == 0 && !inventory.getSelectedItem().isEmpty()) {
                 throw new AssertionError("服务端将快捷栏改为零后，客户端主手仍可取物");
             }
-            inventory.swapPaint(-1);
-            if (inventory.selected != (count == 9 ? 3 : 0)) {
+            long window = game.getWindow().handle();
+            GLFWScrollCallback scroll = GLFW.glfwSetScrollCallback(window, null);
+            if (scroll == null) {
+                throw new AssertionError("原版滚轮回调尚未安装");
+            }
+            GLFW.glfwSetScrollCallback(window, scroll);
+            scroll.invoke(window, 0, -1);
+            if (inventory.getSelectedSlot() != (count == 9 ? 3 : 0)) {
                 throw new AssertionError("滚轮未按开放的快捷栏数量回绕 " + count);
             }
-            inventory.selected = 0;
+            inventory.setSelectedSlot(0);
             Files.writeString(directory.resolve((host ? "host" : "guest") + marker), "主背包=" + main + " 快捷栏=" + count);
             observed = true;
         }
