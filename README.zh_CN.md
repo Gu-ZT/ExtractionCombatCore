@@ -10,7 +10,7 @@
 
 </div>
 
-本分支面向 Minecraft 1.21.1、NeoForge 和 AnvilLib 2.0.0。运行 `./gradlew build` 构建模组，使用创造栏中的演示套件试玩。[地图作者使用说明](docs/CONFIG.md)
+本分支面向 Minecraft 1.21.1、NeoForge 和 AnvilLib 2.0.0。运行 `./gradlew build` 构建模组，使用创造栏中的演示套件试玩。[地图作者使用说明](docs/CONFIG.md) · [玩法与版本验收](docs/玩法验收.md)
 
 ## 在维修柜前搜一分钟
 
