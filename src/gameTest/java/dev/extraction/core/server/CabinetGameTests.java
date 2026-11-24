@@ -171,6 +171,100 @@ public final class CabinetGameTests {
         test.succeed();
     }
 
+    @GameTest(template = "test_room")
+    public static void addonLock(GameTestHelper test) {
+        BlockPos local = new BlockPos(1, 1, 1);
+        BlockPos pos = test.absolutePos(local);
+        test.setBlock(local, ExtractionCore.CABINET.get());
+        CabinetEntity cabinet = test.getBlockEntity(local);
+        cabinet.bind(AddonLockTypes.CABINET);
+        LootSessions.initializeCabinet(test.getLevel(), cabinet);
+        CompoundTag saved = cabinet.cabinetData();
+        JsonObject layout = StoredGrid.savedLayout(saved);
+        var routes = layout.getAsJsonObject("access").getAsJsonArray("routes");
+        JsonObject invalidLayout = layout.deepCopy();
+        invalidLayout.getAsJsonObject("access").getAsJsonArray("routes").get(0).getAsJsonObject()
+            .getAsJsonArray("steps").get(0).getAsJsonObject().addProperty("turns", 0);
+        JsonObject containers = new JsonObject();
+        containers.add(AddonLockTypes.CABINET.toString(), invalidLayout);
+        JsonObject files = new JsonObject();
+        files.add("containers", containers);
+        String validation = "";
+        try {
+            RuleBook.restore(files.toString(), test.getLevel().registryAccess());
+        } catch (IllegalArgumentException error) {
+            validation = error.getMessage();
+        }
+        test.assertTrue(validation.contains(AddonLockTypes.CABINET + ".access.routes[0].steps[0].turns"),
+            "附属步骤的参数校验应报告定义 ID 与字段位置，实际为 " + validation);
+        JsonObject routeConfig = routes.get(0).getAsJsonObject();
+        JsonObject missingCondition = routeConfig.deepCopy();
+        missingCondition.getAsJsonArray("requires").get(0).getAsJsonObject().addProperty("type", "example:removed_condition");
+        routes.add(missingCondition);
+        JsonObject missingPuzzle = routeConfig.deepCopy();
+        missingPuzzle.getAsJsonArray("steps").get(0).getAsJsonObject().addProperty("type", "example:removed_puzzle");
+        routes.add(missingPuzzle);
+        saved.putByteArray("layout", layout.toString().getBytes(StandardCharsets.UTF_8));
+        cabinet.saveCabinet(saved);
+        ServerPlayer player = player(test, pos, "Dial");
+        LootSessions.openCabinet(player, pos);
+        LootSession session = LootSessions.active(player);
+        CompoundTag route = action(session, "route");
+        route.putInt("index", 0);
+        LootSessions.act(player, route);
+        test.assertTrue(!session.view().contains("challenge"), "未持指南针时附属条件应拒绝开启路线");
+
+        player.setItemInHand(InteractionHand.OFF_HAND, new ItemStack(Items.COMPASS));
+        for (int index : new int[]{1, 2}) {
+            route.putInt("index", index);
+            LootSessions.act(player, route);
+            test.assertTrue(!session.cabinet.unlocked && !session.view().contains("challenge"), "缺失附属类型的路线应保持锁定");
+        }
+        route.putInt("index", 0);
+        LootSessions.act(player, route);
+        CompoundTag initial = session.view().getCompound("challenge");
+        CompoundTag publicView = new CompoundTag();
+        publicView.putInt("turns", 0);
+        test.assertTrue(initial.getString("type").equals("example:dial") && !initial.contains("turns")
+            && publicView.equals(initial.getCompound("view")), "界面应收到注册类型及公开题面");
+        CompoundTag message = action(session, "puzzle_input");
+        message.putInt("round", initial.getInt("round"));
+        message.putInt("step", initial.getInt("step") + 1);
+        CompoundTag turn = new CompoundTag();
+        turn.putBoolean("turn", true);
+        message.put("input", turn);
+        LootSessions.act(player, message);
+        test.assertTrue(session.view().getCompound("challenge").getCompound("view").getInt("turns") == 0, "其它步骤的输入不应生效");
+        message.putInt("step", initial.getInt("step"));
+        LootSessions.act(player, message);
+        test.assertTrue(session.view().getCompound("challenge").getCompound("view").getInt("turns") == 1, "附属小游戏应接收输入并刷新进度");
+
+        player.setItemInHand(InteractionHand.OFF_HAND, ItemStack.EMPTY);
+        session.tick();
+        test.assertTrue(!session.view().contains("challenge"), "条件失效应中止附属小游戏");
+        player.setItemInHand(InteractionHand.OFF_HAND, new ItemStack(Items.COMPASS));
+        LootSessions.act(player, route);
+        CompoundTag retry = session.view().getCompound("challenge");
+        message.putInt("round", retry.getInt("round") ^ 1);
+        LootSessions.act(player, message);
+        test.assertTrue(session.view().getCompound("challenge").getCompound("view").getInt("turns") == 0, "旧回合输入不应计入新会话");
+        message.putInt("round", retry.getInt("round"));
+        LootSessions.act(player, message);
+        LootSessions.act(player, message);
+        test.assertTrue(session.view().getString("mode").equals("storage"), "完成附属小游戏后应打开柜子");
+        UUID loot = UUID.randomUUID();
+        session.cabinet.entries.add(new Grid.Entry(loot, new ItemStack(Items.EMERALD, 3), Grid.Style.DEFAULT, 0, 0, 0, 0));
+        session.cabinet.persist();
+        LootSessions.act(player, action(session, "close"));
+        LootSessions.openCabinet(player, pos);
+        LootSession reopened = LootSessions.active(player);
+        test.assertTrue(reopened.cabinet.unlocked && reopened.cabinet.layout.definition().equals(layout)
+            && reopened.cabinet.entries.size() == 1 && reopened.cabinet.entries.getFirst().id().equals(loot)
+            && reopened.cabinet.entries.getFirst().stack().getCount() == 3, "重开后应保留缺失类型的配置、解锁状态与库存");
+        LootSessions.act(player, action(reopened, "close"));
+        test.succeed();
+    }
+
     private static ServerPlayer player(GameTestHelper test, BlockPos pos, String name) {
         ServerPlayer player = new FakePlayer(test.getLevel(), new GameProfile(UUID.randomUUID(), name));
         player.moveTo(pos.getX() + 0.5, pos.getY(), pos.getZ() + 0.5);
@@ -179,7 +273,7 @@ public final class CabinetGameTests {
 
     private static AccessChallenge challenge(ServerPlayer player, String step) {
         JsonObject route = JsonParser.parseString("{\"steps\":[" + step + "]}").getAsJsonObject();
-        return new AccessChallenge(route, player);
+        return new AccessChallenge(route, player, player.blockPosition());
     }
 
     private static void input(ServerPlayer player, AccessChallenge challenge, String action, String answer) {

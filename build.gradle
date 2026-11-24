@@ -4,7 +4,7 @@ plugins {
 }
 
 group = 'dev.extraction'
-version = '0.1.0'
+version = '0.2.0'
 base.archivesName = "extractioncombatcore-${minecraft_version}"
 java.toolchain.languageVersion = JavaLanguageVersion.of(java_version as int)
 
