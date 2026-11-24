@@ -3,12 +3,15 @@ package dev.extraction.core.rules;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
+import dev.extraction.core.api.LockDefinition;
+import dev.extraction.core.api.LockTypes;
+import net.minecraft.core.Registry;
 import net.minecraft.resources.ResourceLocation;
 
 import java.nio.charset.StandardCharsets;
 
 /** 检查数据包字段并在错误中保留配置路径。 */
-final class DefinitionFields {
+public final class DefinitionFields {
     private DefinitionFields() {}
 
     static JsonObject object(JsonElement element, String path) {
@@ -75,7 +78,7 @@ final class DefinitionFields {
         return new IllegalArgumentException(path + " " + reason);
     }
 
-    static void access(JsonObject access, String path) {
+    static void access(JsonObject access, String path, boolean savedLayout) {
         JsonArray routes = array(access, "routes", path);
         for (int i = 0; i < routes.size(); i++) {
             String routePath = path + ".routes[" + i + "]";
@@ -84,19 +87,32 @@ final class DefinitionFields {
                 JsonArray requirements = array(route, "requires", routePath);
                 for (int n = 0; n < requirements.size(); n++) {
                     String requirementPath = routePath + ".requires[" + n + "]";
-                    require(object(requirements.get(n), requirementPath), requirementPath);
+                    validateType(LockTypes.CONDITIONS, object(requirements.get(n), requirementPath), requirementPath, savedLayout);
                 }
             }
             JsonArray steps = array(route, "steps", routePath);
             for (int n = 0; n < steps.size(); n++) {
                 String stepPath = routePath + ".steps[" + n + "]";
-                step(object(steps.get(n), stepPath), stepPath);
+                validateType(LockTypes.PUZZLES, object(steps.get(n), stepPath), stepPath, savedLayout);
             }
         }
     }
 
-    private static void require(JsonObject condition, String path) {
-        String type = string(condition, "type", path);
+    private static <T extends LockDefinition> void validateType(Registry<T> registry, JsonObject definition, String path, boolean savedLayout) {
+        String type = string(definition, "type", path);
+        ResourceLocation id = resource(type.indexOf(':') < 0 ? "extractioncombatcore:" + type : type, path + ".type");
+        var entry = registry.getOptional(id);
+        if (entry.isEmpty()) {
+            if (savedLayout) {
+                return;
+            }
+            throw invalid(path + ".type", "未注册的类型 " + id);
+        }
+        entry.get().validate(definition, path);
+    }
+
+    /** 校验核心注册的开柜条件，并在异常中标记数据包字段。 */
+    public static void builtInCondition(String type, JsonObject condition, String path) {
         switch (type) {
             case "powered" -> {}
             case "unlocked" -> resource(string(condition, "flag", path), path + ".flag");
@@ -111,8 +127,8 @@ final class DefinitionFields {
         }
     }
 
-    private static void step(JsonObject step, String path) {
-        String type = string(step, "type", path);
+    /** 校验核心注册的小游戏参数，并在异常中标记数据包字段。 */
+    public static void builtInStep(String type, JsonObject step, String path) {
         integer(step, "error_pause_ticks", 0, 0, Integer.MAX_VALUE, path);
         switch (type) {
             case "click", "sneak" -> {}

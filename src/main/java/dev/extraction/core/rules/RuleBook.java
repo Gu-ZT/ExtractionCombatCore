@@ -136,7 +136,7 @@ public final class RuleBook {
     }
 
     public static Storage restoreStorage(JsonObject json, boolean backpack) {
-        return storage(json, backpack, "layout");
+        return storage(json, backpack, "layout", true);
     }
 
     public static void register(AddServerReloadListenersEvent event) {
@@ -192,9 +192,9 @@ public final class RuleBook {
         Map<ResourceLocation, Storage> bags = new HashMap<>();
         Map<ResourceLocation, Storage> cabinets = new HashMap<>();
         group(input, "backpacks").asMap().forEach((key, data) ->
-            bags.put(resource(key, "backpacks"), storage(object(data, key), true, key)));
+            bags.put(resource(key, "backpacks"), storage(object(data, key), true, key, false)));
         group(input, "containers").asMap().forEach((key, data) ->
-            cabinets.put(resource(key, "containers"), storage(object(data, key), false, key)));
+            cabinets.put(resource(key, "containers"), storage(object(data, key), false, key, false)));
         List<ItemRule> items = new ArrayList<>();
         group(input, "items").asMap().entrySet().stream().sorted(Map.Entry.comparingByKey()).forEach(entry -> {
             String key = entry.getKey();
@@ -207,7 +207,7 @@ public final class RuleBook {
         return new RuleBook(input, bags, cabinets, items);
     }
 
-    private static Storage storage(JsonObject data, boolean backpack, String path) {
+    private static Storage storage(JsonObject data, boolean backpack, String path, boolean savedLayout) {
         List<Grid.Section> sections = new ArrayList<>();
         Set<String> ids = new HashSet<>();
         JsonArray entries = array(data, "sections", path);
@@ -239,7 +239,7 @@ public final class RuleBook {
             integer(search, "ticks_per_item", 24, 1, Integer.MAX_VALUE, field);
         }
         if (data.has("access")) {
-            access(object(data.get("access"), path + ".access"), path + ".access");
+            access(object(data.get("access"), path + ".access"), path + ".access", savedLayout);
         }
         Grid.Style outer = backpack ? style(object(data.get("outer"), path + ".outer"), Map.of(), path + ".outer") : Grid.Style.DEFAULT;
         return new Storage(sections, outer, data);
@@ -344,19 +344,22 @@ public final class RuleBook {
                 }
                 if (definition.has("access")) {
                     JsonObject access = object(definition.get("access"), key + ".access");
-                    for (JsonElement route : array(access, "routes", key + ".access")) {
-                        JsonObject entry = object(route, key + ".access.routes");
+                    JsonArray routes = array(access, "routes", key + ".access");
+                    for (int i = 0; i < routes.size(); i++) {
+                        String routePath = key + ".access.routes[" + i + "]";
+                        JsonObject entry = object(routes.get(i), routePath);
                         if (entry.has("requires")) {
-                            for (JsonElement requirement : array(entry, "requires", key + ".access.routes")) {
-                                String path = key + ".access.routes.requires";
-                                JsonObject req = object(requirement, path);
+                            JsonArray requirements = array(entry, "requires", routePath);
+                            for (int n = 0; n < requirements.size(); n++) {
+                                String path = routePath + ".requires[" + n + "]";
+                                JsonObject req = object(requirements.get(n), path);
                                 String type = string(req, "type", path);
-                                if (type.equals("held_item")) {
+                                if (type.equals("held_item") || type.equals("extractioncombatcore:held_item")) {
                                     ResourceLocation id = resource(string(req, "item", path), path + ".item");
                                     if (registries.lookupOrThrow(Registries.ITEM).get(ResourceKey.create(Registries.ITEM, id)).isEmpty()) {
                                         throw invalid(path + ".item", "找不到物品 " + id);
                                     }
-                                } else if (type.equals("held_item_tag")) {
+                                } else if (type.equals("held_item_tag") || type.equals("extractioncombatcore:held_item_tag")) {
                                     String id = string(req, "tag", path);
                                     req.add("_resolved_items", resolveTag(tags, id.startsWith("#") ? id.substring(1) : id, path + ".tag"));
                                 }

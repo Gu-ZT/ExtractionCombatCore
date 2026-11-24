@@ -135,7 +135,7 @@ final class LootSession {
                 }
                 ItemStack stack = GameAccess.itemAt(player, i);
                 boolean enabled = GameAccess.isEnabled(player, i);
-                if (enabled && GameAccess.isBag(stack)) {
+                if (enabled && GameAccess.isSingleBag(stack)) {
                     CompoundTag pack = new CompoundTag();
                     pack.putInt("slot", i);
                     pack.putString("name", stack.getHoverName().getString());
@@ -238,7 +238,7 @@ final class LootSession {
                 if (index >= 0 && index < cabinet.routes().size()) {
                     var route = cabinet.routes().get(index).getAsJsonObject();
                     if (AccessChallenge.conditions(route, player, position, false)) {
-                        challenge = new AccessChallenge(route, player);
+                        challenge = new AccessChallenge(route, player, position);
                     }
                 }
             } else if (challenge != null && challenge.allowed(player, position, false)) {
@@ -391,7 +391,7 @@ final class LootSession {
             int last = destination >= 0 ? destination : (recover ? 40 : 35);
             for (int slot = Math.max(0, destination); slot <= last && remainder > 0; slot++) {
                 if (!vanillaSlot(slot) || slot == source.slot || !GameAccess.isEnabled(player, slot)
-                    || (slot == GameAccess.EQUIPMENT_SLOT && !GameAccess.isBag(item))) {
+                    || (slot == GameAccess.EQUIPMENT_SLOT && !GameAccess.isSingleBag(item))) {
                     continue;
                 }
                 ItemStack existing = GameAccess.itemAt(player, slot);
@@ -399,7 +399,8 @@ final class LootSession {
                     || (pass == 1 && !existing.isEmpty())) {
                     continue;
                 }
-                int amount = Math.min(remainder, item.getMaxStackSize() - existing.getCount());
+                int limit = slot == GameAccess.EQUIPMENT_SLOT ? 1 : item.getMaxStackSize();
+                int amount = Math.min(remainder, limit - existing.getCount());
                 if (amount > 0) {
                     changes.put(slot, item.copyWithCount(existing.getCount() + amount));
                     remainder -= amount;

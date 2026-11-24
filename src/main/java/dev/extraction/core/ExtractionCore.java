@@ -1,8 +1,10 @@
 package dev.extraction.core;
 
+import dev.extraction.core.api.LockTypes;
 import dev.extraction.core.data.DemoResources;
 import dev.extraction.core.network.ExtractionNetwork;
 import dev.extraction.core.rules.RuleBook;
+import net.minecraft.core.component.DataComponentType;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
@@ -35,6 +37,10 @@ public final class ExtractionCore {
     private static final DeferredRegister<BlockEntityType<?>> ENTITIES = DeferredRegister.create(Registries.BLOCK_ENTITY_TYPE, ID);
     private static final DeferredRegister<AttachmentType<?>> ATTACHMENTS = DeferredRegister.create(NeoForgeRegistries.ATTACHMENT_TYPES, ID);
     private static final DeferredRegister<CreativeModeTab> TABS = DeferredRegister.create(Registries.CREATIVE_MODE_TAB, ID);
+    private static final DeferredRegister<DataComponentType<?>> COMPONENTS = DeferredRegister.create(Registries.DATA_COMPONENT_TYPE, ID);
+    /** 物品栈持有此组件时可作为背包，组件值对应数据包中的背包定义。 */
+    public static final Supplier<DataComponentType<ResourceLocation>> BACKPACK = COMPONENTS.register("backpack",
+        () -> DataComponentType.<ResourceLocation>builder().persistent(ResourceLocation.CODEC).networkSynchronized(ResourceLocation.STREAM_CODEC).build());
     public static final Supplier<Item> PACK = ITEMS.registerItem("backpack", FieldPack::new, new Item.Properties().stacksTo(1));
     public static final Supplier<Block> CABINET = BLOCKS.registerBlock("cabinet", CabinetBlock::new,
         BlockBehaviour.Properties.of().strength(-1, 3600000).pushReaction(PushReaction.BLOCK).noLootTable());
@@ -68,6 +74,8 @@ public final class ExtractionCore {
     }
 
     public ExtractionCore(IEventBus bus, ModContainer container) {
+        COMPONENTS.register(bus);
+        LockTypes.register(bus);
         ITEMS.register(bus);
         BLOCKS.register(bus);
         ENTITIES.register(bus);

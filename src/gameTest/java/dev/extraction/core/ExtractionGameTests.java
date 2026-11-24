@@ -30,6 +30,7 @@ public final class ExtractionGameTests {
         new Case("pickup_retains_components_and_remainder", InventoryGameTests::pickupRetainsComponentsAndRemainder, false),
         new Case("equipped_backpack_follows_death_rule", InventoryGameTests::equippedBackpackFollowsDeathRule, false),
         new Case("concurrent_cabinet", CabinetGameTests::concurrentCabinet, false),
+        new Case("addon_lock", CabinetGameTests::addonLock, false),
         new Case("challenge_inputs", CabinetGameTests::challengeInputs, false),
         new Case("smaller_data_pack", StorageReloadGameTests::smallerDataPack, true),
         new Case("decoder_and_cancellation", StorageReloadGameTests::decoderAndCancellation, false)

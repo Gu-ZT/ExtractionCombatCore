@@ -1,5 +1,7 @@
 package dev.extraction.core.rules;
 
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
 import net.minecraft.SharedConstants;
 import net.minecraft.core.RegistryAccess;
 import net.minecraft.core.component.DataComponents;
@@ -181,6 +183,33 @@ class GridTest {
         Path file = pack.resolve("data").resolve(path + ".json");
         Files.createDirectories(file.getParent());
         Files.writeString(file, json);
+    }
+
+    @Test
+    void reportsLockFieldPathsAndPreservesUnavailableTypesInSavedLayouts() {
+        var registries = RegistryAccess.fromRegistryOfRegistries(BuiltInRegistries.REGISTRY);
+        JsonObject files = JsonParser.parseString("""
+            {"containers":{"example:box":{"sections":[{"id":"main","shape":["X"]}],"access":{"routes":[
+                {"steps":[]},{"requires":[{"type":"powered"},{"tag":"example:key"}],"steps":[]}]}}}}
+            """).getAsJsonObject();
+        JsonObject layout = files.getAsJsonObject("containers").getAsJsonObject("example:box");
+        JsonObject route = layout.getAsJsonObject("access").getAsJsonArray("routes").get(1).getAsJsonObject();
+        JsonObject key = route.getAsJsonArray("requires").get(1).getAsJsonObject();
+        String location = "example:box.access.routes[1].requires[1].type";
+        IllegalArgumentException field = assertThrows(IllegalArgumentException.class, () -> RuleBook.resolve(files, Map.of(), registries));
+        assertTrue(field.getMessage().contains(location), field.getMessage());
+
+        key.addProperty("type", "example:retired_key");
+        IllegalArgumentException condition = assertThrows(IllegalArgumentException.class, () -> RuleBook.resolve(files, Map.of(), registries));
+        assertTrue(condition.getMessage().contains(location) && condition.getMessage().contains("example:retired_key"), condition.getMessage());
+        assertEquals(layout, RuleBook.restoreStorage(layout, false).definition());
+
+        route.remove("requires");
+        route.getAsJsonArray("steps").add(JsonParser.parseString("{\"type\":\"example:retired_dial\",\"sequence\":[3,1,4]}"));
+        IllegalArgumentException puzzle = assertThrows(IllegalArgumentException.class, () -> RuleBook.resolve(files, Map.of(), registries));
+        assertTrue(puzzle.getMessage().contains("example:box.access.routes[1].steps[0].type")
+            && puzzle.getMessage().contains("example:retired_dial"), puzzle.getMessage());
+        assertEquals(layout, RuleBook.restoreStorage(layout, false).definition());
     }
 
     @Test

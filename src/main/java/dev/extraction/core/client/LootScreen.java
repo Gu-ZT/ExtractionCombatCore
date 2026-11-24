@@ -5,7 +5,10 @@ import com.mojang.blaze3d.platform.InputConstants;
 import dev.extraction.core.network.ExtractionNetwork;
 import net.minecraft.Util;
 import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.components.AbstractWidget;
 import net.minecraft.client.gui.components.EditBox;
+import net.minecraft.resources.ResourceLocation;
+import javax.annotation.Nullable;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.chat.Component;
@@ -22,6 +25,7 @@ final class LootScreen extends Screen {
     CompoundTag view;
     StorageView storage;
     private EditBox edit;
+    private @Nullable PuzzleRound puzzle;
     StorageView.Drag drag;
     private long dragRevision;
     private StorageView.Hit lastClick;
@@ -64,6 +68,7 @@ final class LootScreen extends Screen {
             storage = new StorageView(next, storage);
         }
         positionAnswer();
+        updatePuzzle();
     }
 
     @Override
@@ -77,6 +82,75 @@ final class LootScreen extends Screen {
         edit.visible = false;
         addWidget(edit);
         positionAnswer();
+        removePuzzle();
+        updatePuzzle();
+    }
+
+    private void updatePuzzle() {
+        if (edit == null) {
+            return;
+        }
+        CompoundTag challenge = view.getCompoundOrEmpty("challenge");
+        if (!locked() || !challenge.contains("view")) {
+            removePuzzle();
+            return;
+        }
+        ResourceLocation type = ResourceLocation.parse(challenge.getStringOr("type", ""));
+        int round = challenge.getIntOr("round", 0);
+        int step = challenge.getIntOr("step", 0);
+        CompoundTag snapshot = challenge.getCompoundOrEmpty("view");
+        if (puzzle != null && puzzle.type.equals(type) && puzzle.round == round && puzzle.step == step) {
+            puzzle.snapshot = snapshot;
+            return;
+        }
+        removePuzzle();
+        puzzle = new PuzzleRound(type, round, step, snapshot);
+        addWidget(puzzle.widget);
+        setFocused(puzzle.widget);
+    }
+
+    private void removePuzzle() {
+        if (puzzle != null) {
+            AbstractWidget widget = puzzle.widget;
+            puzzle = null;
+            if (getFocused() == widget) {
+                setFocused(null);
+            }
+            setDragging(false);
+            removeWidget(widget);
+        }
+    }
+
+    private final class PuzzleRound implements PuzzleWidgets.Context {
+        private final ResourceLocation type;
+        private final int round;
+        private final int step;
+        private final AbstractWidget widget;
+        private CompoundTag snapshot;
+
+        private PuzzleRound(ResourceLocation type, int round, int step, CompoundTag snapshot) {
+            this.type = type;
+            this.round = round;
+            this.step = step;
+            this.snapshot = snapshot;
+            widget = PuzzleWidgets.create(type, this, font, 8, 23, Math.max(1, width - 16), Math.max(1, height - 47));
+        }
+
+        @Override
+        public CompoundTag view() {
+            return snapshot.copy();
+        }
+
+        @Override
+        public void send(CompoundTag input) {
+            if (puzzle == this && !closed) {
+                CompoundTag message = action("puzzle_input");
+                message.putInt("round", round);
+                message.putInt("step", step);
+                message.put("input", input.copy());
+                LootScreen.this.send(message);
+            }
+        }
     }
 
     void positionAnswer() {
@@ -154,7 +228,9 @@ final class LootScreen extends Screen {
         g.fill(8, 7, 10, 15, 0xffdeaf6b);
         g.drawString(font, locked() ? tr("lock_title") : title, 15, 6, 0xffe4ecdf, false);
         g.drawString(font, "×", width - 17, 6, mx >= width - 24 && my < 20 ? 0xffffd097 : 0xffbdcbbd, false);
-        if (locked()) {
+        if (puzzle != null) {
+            puzzle.widget.render(g, mx, my, partialTick);
+        } else if (locked()) {
             lock.draw(g, font, width, height, mx, my, partialTick, clock);
             if (edit.visible) {
                 edit.render(g, mx, my, partialTick);
@@ -192,7 +268,7 @@ final class LootScreen extends Screen {
             return true;
         }
         if (locked()) {
-            if (lock.click(mx, my, button) || ExtractionClient.ACTION.matchesMouse(button) && lock.press()) {
+            if (puzzle == null && (lock.click(mx, my, button) || ExtractionClient.ACTION.matchesMouse(button) && lock.press())) {
                 return true;
             }
             return super.mouseClicked(x, y, button);
@@ -285,6 +361,9 @@ final class LootScreen extends Screen {
 
     @Override
     public boolean mouseScrolled(double x, double y, double horizontal, double vertical) {
+        if (puzzle != null) {
+            return super.mouseScrolled(x, y, horizontal, vertical);
+        }
         if (locked()) {
             lock.scroll(vertical);
         } else {
@@ -298,11 +377,11 @@ final class LootScreen extends Screen {
         if (minecraft.options.keyShift.matches(key, scan)) {
             sneakInput = true;
         }
-        if (key == GLFW.GLFW_KEY_ESCAPE || ExtractionClient.OPEN.matches(key, scan) && !(locked() && lock.takesText())) {
+        if (key == GLFW.GLFW_KEY_ESCAPE || ExtractionClient.OPEN.matches(key, scan) && puzzle == null && !(locked() && lock.takesText())) {
             onClose();
             return true;
         }
-        if (locked()) {
+        if (locked() && puzzle == null) {
             if (key == GLFW.GLFW_KEY_ENTER || key == GLFW.GLFW_KEY_KP_ENTER) {
                 lock.submit();
                 return true;
@@ -323,7 +402,7 @@ final class LootScreen extends Screen {
         if (minecraft.options.keyShift.matches(key, scan)) {
             sneakInput = false;
         }
-        if (locked() && ExtractionClient.ACTION.matches(key, scan)) {
+        if (locked() && puzzle == null && ExtractionClient.ACTION.matches(key, scan)) {
             lock.release();
             return true;
         }
@@ -337,6 +416,7 @@ final class LootScreen extends Screen {
 
     @Override
     public void removed() {
+        removePuzzle();
         ExtractionClient.dismissed(session);
         if (!closed && minecraft != null && minecraft.getConnection() != null) {
             closed = true;
