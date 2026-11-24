@@ -3,7 +3,7 @@ loaderVersion="[4,)"
 license="LGPL-3.0-only；原创贴图与模型保留全部权利"
 [[mods]]
 modId="extractioncombatcore"
-version="0.1.0"
+version="0.2.0"
 displayName="Extraction Combat Core"
 logoFile="extractioncombatcore.png"
 description="由数据包定义的开锁、翻找与异形背包。"

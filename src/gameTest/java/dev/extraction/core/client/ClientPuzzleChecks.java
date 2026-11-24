@@ -7,6 +7,7 @@ import dev.extraction.core.ExtractionCore;
 import net.minecraft.client.KeyMapping;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.Screenshot;
+import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.screens.AccessibilityOnboardingScreen;
 import net.minecraft.client.gui.screens.TitleScreen;
 import net.minecraft.client.input.CharacterEvent;
@@ -19,6 +20,7 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.nbt.CompoundTag;
+import net.minecraft.network.chat.Component;
 import net.minecraft.resources.Identifier;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
@@ -26,6 +28,7 @@ import net.minecraft.world.Difficulty;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.flag.FeatureFlags;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
 import net.minecraft.world.level.GameType;
 import net.minecraft.world.level.LevelSettings;
 import net.minecraft.world.level.WorldDataConfiguration;
@@ -49,16 +52,19 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 
-/** 在独立开发世界中通过正式界面和服务器连接完成五种锁。 */
+/** 在独立开发世界中通过正式界面和服务器连接完成内置锁与附属小游戏。 */
 @EventBusSubscriber(modid = "extractioncombatcore", value = Dist.CLIENT)
 public final class ClientPuzzleChecks {
     private static final boolean ENABLED = System.getProperty("extraction.playtest", "").equals("puzzles");
     private static final Path DIR = Path.of(System.getProperty("extraction.playtest.dir", ".")).toAbsolutePath();
     private static final Logger LOGGER = LogUtils.getLogger();
-    private static final List<String> TYPES = List.of("password", "audio_morse", "pattern_morse", "rolling_lock", "accelerated_decode");
+    private static final List<String> TYPES = Boolean.getBoolean("extraction.playtest.addonOnly") ? List.of("example:dial")
+        : List.of("password", "audio_morse", "pattern_morse", "rolling_lock", "accelerated_decode", "example:dial");
+    private static final List<Integer> DIAL_TURNS = new ArrayList<>();
     private static final String SOS = "...---...";
     private static final BlockPos POS = new BlockPos(8, 80, 8);
     private static final StringBuffer TONES = new StringBuffer();
@@ -111,6 +117,7 @@ public final class ClientPuzzleChecks {
                 return;
             }
             Files.createDirectories(DIR);
+            registerDial();
             mc.getTutorial().setStep(TutorialSteps.NONE);
             originalAction = ExtractionClient.ACTION.getKey();
             ExtractionClient.ACTION.setKey(InputConstants.Type.KEYSYM.getOrCreate(GLFW.GLFW_KEY_R));
@@ -147,7 +154,15 @@ public final class ClientPuzzleChecks {
                 }
                 Block cabinet = ExtractionCore.CABINET.get();
                 level.setBlockAndUpdate(cabinetPos, cabinet.defaultBlockState());
-                ((CabinetEntity) level.getBlockEntity(cabinetPos)).bind(ExtractionCore.id(type.equals("accelerated_decode") ? "service_cabinet" : type));
+                Identifier definition = switch (type) {
+                    case "accelerated_decode" -> ExtractionCore.id("service_cabinet");
+                    case "example:dial" -> Identifier.parse("example:dial_cabinet");
+                    default -> ExtractionCore.id(type);
+                };
+                ((CabinetEntity) level.getBlockEntity(cabinetPos)).bind(definition);
+                if (type.equals("example:dial")) {
+                    player.setItemInHand(InteractionHand.OFF_HAND, new ItemStack(Items.COMPASS));
+                }
                 level.setBlockAndUpdate(cabinetPos.west(), Blocks.REDSTONE_BLOCK.defaultBlockState());
                 player.connection.teleport(playerPos.x, playerPos.y, playerPos.z, 180, 18);
                 player.getInventory().setSelectedSlot(0);
@@ -192,6 +207,9 @@ public final class ClientPuzzleChecks {
                 check(lastElapsed >= 396 && mc.player.getMainHandItem().is(ExtractionCore.DECODER.get()),
                     "译码器自然等待或工具保留未通过");
             }
+            if (type.equals("example:dial")) {
+                check(DIAL_TURNS.equals(List.of(0, 1)), "转盘控件没有依次收到两份服务端视图");
+            }
             RESULTS.append(type).append(" 通过\n");
             LOGGER.info("客户端锁具完成 {}", type);
             screen.onClose();
@@ -202,6 +220,7 @@ public final class ClientPuzzleChecks {
             }
         } else if (stage == Stage.OPERATE && challenge.getStringOr("type", "").equals(type)) {
             switch (type) {
+                case "example:dial" -> dial(screen, challenge);
                 case "password" -> password(screen, challenge);
                 case "audio_morse" -> audio(screen, challenge);
                 case "pattern_morse" -> pattern(screen, challenge);
@@ -217,6 +236,28 @@ public final class ClientPuzzleChecks {
                 }
                 default -> throw new IllegalStateException(type);
             }
+        }
+    }
+
+    private static void registerDial() {
+        PuzzleWidgets.register(Identifier.parse("example:dial"), (context, x, y, width, height) ->
+            Button.builder(Component.literal("转动刻度盘"), button -> {
+                CompoundTag snapshot = context.view();
+                check(snapshot.contains("turns"), "转盘控件缺少公开的圈数");
+                DIAL_TURNS.add(snapshot.getIntOr("turns", -1));
+                CompoundTag input = new CompoundTag();
+                input.putBoolean("turn", true);
+                context.send(input);
+            }).bounds(x + width / 2 - 50, y + height / 2 - 10, 100, 20).build());
+    }
+
+    private static void dial(LootScreen screen, CompoundTag challenge) {
+        int turns = challenge.getCompoundOrEmpty("view").getIntOr("turns", -1);
+        if (step < 2 && turns == step) {
+            check(screen.mouseClicked(new MouseButtonEvent(screen.width / 2, screen.height / 2, new MouseButtonInfo(0, 0)), false), "转盘控件没有接收鼠标点击");
+            screen.mouseReleased(new MouseButtonEvent(screen.width / 2, screen.height / 2, new MouseButtonInfo(0, 0)));
+            step++;
+            check(DIAL_TURNS.size() == step, "转盘控件没有提交输入");
         }
     }
 

@@ -38,6 +38,7 @@
   "gui.extractioncombatcore.lock.sneak": "潜行开锁",
   "gui.extractioncombatcore.lock.sneak_interact": "潜行开锁",
   "gui.extractioncombatcore.lock_title": "开启容器",
+  "gui.extractioncombatcore.missing_puzzle_widget": "缺少小游戏界面 %s",
   "gui.extractioncombatcore.no_pack": "未选择随身背包",
   "gui.extractioncombatcore.organizing": "正在整理…",
   "gui.extractioncombatcore.password_hint": "按地图线索输入密码，保留前导零。",

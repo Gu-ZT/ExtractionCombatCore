@@ -55,7 +55,7 @@ public final class LootSessions {
     }
 
     public static void initializeBag(ServerPlayer player, ItemStack stack) {
-        if (GameAccess.isBag(stack) && !GameAccess.bagData(player, stack).contains("layout")) {
+        if (GameAccess.isSingleBag(stack) && !GameAccess.bagData(player, stack).contains("layout")) {
             bag(player, stack);
         }
     }
@@ -103,12 +103,18 @@ public final class LootSessions {
         session.show();
     }
 
+    /** 在服务端主线程打开指定物品栏槽中的单件背包。传入 -1 打开当前收纳界面。 */
     public static void openPack(ServerPlayer player, int slot) {
         if (player.isSpectator() || !player.isAlive()) {
             return;
         }
         if (slot >= 0) {
             GameAccess.selectBag(player, slot);
+            if (GameAccess.selectedBag(player) != slot) {
+                return;
+            }
+        } else if (slot != -1) {
+            return;
         }
         close(player, false);
         player.closeContainer();
@@ -120,7 +126,7 @@ public final class LootSessions {
     /** 试放入已装备的背包，返回成功收纳的数量，由拾取路径扣除地上物品。 */
     public static int pickup(ServerPlayer player, ItemStack incoming) {
         ItemStack equipped = GameAccess.itemAt(player, GameAccess.EQUIPMENT_SLOT);
-        if (!GameAccess.isBag(equipped) || incoming.isEmpty() || GameAccess.isBag(incoming)) {
+        if (!GameAccess.isSingleBag(equipped) || incoming.isEmpty() || GameAccess.isBag(incoming)) {
             return 0;
         }
         StoredGrid pack = bag(player, equipped);
@@ -184,6 +190,12 @@ public final class LootSessions {
     @SubscribeEvent
     public static void tick(PlayerTickEvent.Post event) {
         if (event.getEntity() instanceof ServerPlayer player) {
+            for (int slot = 0; slot <= GameAccess.EQUIPMENT_SLOT; slot++) {
+                ItemStack stack = GameAccess.itemAt(player, slot);
+                if (GameAccess.needsBagInstance(stack)) {
+                    bag(player, stack);
+                }
+            }
             LootSession session = active(player);
             if (session != null) {
                 if (session.valid()) {
