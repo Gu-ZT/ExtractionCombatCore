@@ -4,7 +4,7 @@ import dev.extraction.core.GameAccess;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.inventory.AbstractContainerMenu;
-import net.minecraft.world.inventory.ClickType;
+import net.minecraft.world.inventory.ContainerInput;
 import net.minecraft.world.inventory.Slot;
 import net.minecraft.world.item.ItemStack;
 import org.spongepowered.asm.mixin.Mixin;
@@ -20,10 +20,10 @@ abstract class MenuPolicyMixin {
     @Shadow public abstract boolean isValidSlotIndex(int index);
 
     @Inject(method = "clicked", at = @At("HEAD"), cancellable = true)
-    private void extractionLimitClick(int index, int button, ClickType type, Player player, CallbackInfo ci) {
-        if (type == ClickType.SWAP && !GameAccess.policy(player).enabled(button)) {
+    private void extractionLimitClick(int index, int button, ContainerInput type, Player player, CallbackInfo ci) {
+        if (type == ContainerInput.SWAP && !GameAccess.policy(player).enabled(button)) {
             ci.cancel();
-        } else if (index >= 0 && isValidSlotIndex(index) && type != ClickType.PICKUP) {
+        } else if (index >= 0 && isValidSlotIndex(index) && type != ContainerInput.PICKUP) {
             Slot slot = getSlot(index);
             if (slot.container instanceof Inventory inventory && !GameAccess.policy(inventory.player).enabled(slot.getContainerSlot())) {
                 ci.cancel();

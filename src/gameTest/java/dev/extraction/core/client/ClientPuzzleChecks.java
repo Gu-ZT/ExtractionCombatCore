@@ -9,17 +9,22 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.Screenshot;
 import net.minecraft.client.gui.screens.AccessibilityOnboardingScreen;
 import net.minecraft.client.gui.screens.TitleScreen;
+import net.minecraft.client.input.CharacterEvent;
+import net.minecraft.client.input.KeyEvent;
+import net.minecraft.client.input.MouseButtonEvent;
+import net.minecraft.client.input.MouseButtonInfo;
 import net.minecraft.client.server.IntegratedServer;
 import net.minecraft.client.tutorial.TutorialSteps;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.nbt.CompoundTag;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.Difficulty;
+import net.minecraft.world.InteractionHand;
 import net.minecraft.world.item.ItemStack;
-import net.minecraft.world.level.GameRules;
 import net.minecraft.world.level.GameType;
 import net.minecraft.world.level.LevelSettings;
 import net.minecraft.world.level.WorldDataConfiguration;
@@ -27,6 +32,8 @@ import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.levelgen.WorldOptions;
 import net.minecraft.world.level.levelgen.presets.WorldPresets;
+import net.minecraft.world.phys.BlockHitResult;
+import net.minecraft.world.phys.Vec3;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
@@ -66,6 +73,7 @@ public final class ClientPuzzleChecks {
     private static CompoundTag lastRollView;
     private static int rollViewTick;
     private static int lastColumn = -1;
+    private static int rollPressedAt = -100;
     private static String capture;
     private static boolean stopped;
     private static CompletableFuture<Void> fixture;
@@ -106,32 +114,41 @@ public final class ClientPuzzleChecks {
             ExtractionClient.ACTION.setKey(InputConstants.Type.KEYSYM.getOrCreate(GLFW.GLFW_KEY_R));
             KeyMapping.resetMapping();
             stage = Stage.PREPARE;
-            LevelSettings settings = new LevelSettings("锁具验收", GameType.SURVIVAL, false, Difficulty.PEACEFUL, true,
-                new GameRules(), WorldDataConfiguration.DEFAULT);
+            LevelSettings settings = new LevelSettings("锁具验收", GameType.SURVIVAL,
+                new LevelSettings.DifficultySettings(Difficulty.PEACEFUL, false, false), true, WorldDataConfiguration.DEFAULT);
             mc.createWorldOpenFlows().createFreshLevel("extraction-puzzles-" + System.currentTimeMillis(), settings,
-                new WorldOptions(165, false, false), registries -> registries.registryOrThrow(Registries.WORLD_PRESET)
-                    .getHolderOrThrow(WorldPresets.FLAT).value().createWorldDimensions(), new TitleScreen());
+                new WorldOptions(165, false, false), registries -> registries.lookupOrThrow(Registries.WORLD_PRESET)
+                    .getOrThrow(WorldPresets.FLAT).value().createWorldDimensions(), new TitleScreen());
             return;
         }
         if (mc.level == null || mc.player == null) {
             return;
         }
         String type = TYPES.get(index);
+        BlockPos cabinetPos = POS.offset(index * 5, 0, 0);
+        Vec3 playerPos = new Vec3(cabinetPos.getX() + .4, cabinetPos.getY(), cabinetPos.getZ() + 2.4);
+        if (ticks % 160 == 0) {
+            String screenName = mc.screen == null ? "世界" : mc.screen.getClass().getSimpleName();
+            String details = mc.screen instanceof LootScreen loot
+                ? loot.view.getStringOr("mode", "") + "/" + loot.view.getCompoundOrEmpty("challenge").getStringOr("type", "")
+                    + " " + loot.view.getStringOr("message", "") : "";
+            LOGGER.info("锁具 {} 阶段 {}/{}，屏幕 {} {}，柜体 {}，距测试站位 {}", type, stage, step, screenName,
+                details, mc.level.getBlockState(cabinetPos), mc.player.position().distanceTo(playerPos));
+        }
         if (stage == Stage.PREPARE && mc.screen == null) {
             IntegratedServer server = mc.getSingleplayerServer();
             fixture = server.submit(() -> {
                 ServerLevel level = server.overworld();
                 ServerPlayer player = server.getPlayerList().getPlayers().getFirst();
-                for (BlockPos p : BlockPos.betweenClosed(POS.offset(-2, -1, -2), POS.offset(2, -1, 3))) {
+                for (BlockPos p : BlockPos.betweenClosed(cabinetPos.offset(-2, -1, -2), cabinetPos.offset(2, -1, 3))) {
                     level.setBlockAndUpdate(p, Blocks.STONE.defaultBlockState());
                 }
-                level.setBlockAndUpdate(POS, Blocks.AIR.defaultBlockState());
                 Block cabinet = ExtractionCore.CABINET.get();
-                level.setBlockAndUpdate(POS, cabinet.defaultBlockState());
-                ((CabinetEntity) level.getBlockEntity(POS)).bind(ExtractionCore.id(type.equals("accelerated_decode") ? "service_cabinet" : type));
-                level.setBlockAndUpdate(POS.west(), Blocks.REDSTONE_BLOCK.defaultBlockState());
-                player.connection.teleport(POS.getX() + .4, POS.getY(), POS.getZ() + 2.4, 180, 18);
-                player.getInventory().selected = 0;
+                level.setBlockAndUpdate(cabinetPos, cabinet.defaultBlockState());
+                ((CabinetEntity) level.getBlockEntity(cabinetPos)).bind(ExtractionCore.id(type.equals("accelerated_decode") ? "service_cabinet" : type));
+                level.setBlockAndUpdate(cabinetPos.west(), Blocks.REDSTONE_BLOCK.defaultBlockState());
+                player.connection.teleport(playerPos.x, playerPos.y, playerPos.z, 180, 18);
+                player.getInventory().setSelectedSlot(0);
                 player.getInventory().setItem(0, type.equals("accelerated_decode") ? new ItemStack(ExtractionCore.DECODER.get()) : ItemStack.EMPTY);
                 player.inventoryMenu.broadcastChanges();
             });
@@ -144,24 +161,29 @@ public final class ClientPuzzleChecks {
             LOGGER.info("准备验收锁具 {}", type);
             return;
         }
-        if (stage == Stage.OPEN && fixture.isDone() && mc.screen == null && mc.level.getBlockState(POS).is(ExtractionCore.CABINET.get())) {
+        // 收到该柜的区块数据与传送后再右键，服务端才已按顺序收到本次传送的确认。
+        if (stage == Stage.OPEN && fixture.isDone() && mc.screen == null && mc.player.position().distanceToSqr(playerPos) < .1
+            && mc.level.getBlockState(cabinetPos).is(ExtractionCore.CABINET.get())) {
             fixture.join();
-            ClientPlaythrough.useCabinet(mc);
+            Vec3 point = Vec3.atCenterOf(cabinetPos).add(0, 0, .5);
+            mc.gameMode.useItemOn(mc.player, InteractionHand.MAIN_HAND, new BlockHitResult(point, Direction.SOUTH, cabinetPos, false));
+            LOGGER.info("客户端已到达 {} 并右键 {}", playerPos, cabinetPos);
             stage = Stage.ROUTE;
             return;
         }
         if (!(mc.screen instanceof LootScreen screen)) {
             return;
         }
-        CompoundTag challenge = screen.view.getCompound("challenge");
+        CompoundTag challenge = screen.view.getCompoundOrEmpty("challenge");
         if (stage == Stage.ROUTE) {
-            check(screen.view.getString("mode").equals("lock"), "演示柜初始没有上锁 " + type);
+            check(screen.view.getStringOr("mode", "").equals("lock"), "演示柜初始没有上锁 " + type);
+            LOGGER.info("选择 {} 的真实路线 {}", type, screen.view.get("routes"));
             if (type.equals("accelerated_decode")) {
-                screen.keyPressed(GLFW.GLFW_KEY_DOWN, 0, 0);
+                screen.keyPressed(new KeyEvent(GLFW.GLFW_KEY_DOWN, 0, 0));
             }
-            screen.keyPressed(GLFW.GLFW_KEY_ENTER, 0, 0);
+            screen.keyPressed(new KeyEvent(GLFW.GLFW_KEY_ENTER, 0, 0));
             stage = Stage.OPERATE;
-        } else if (stage == Stage.OPERATE && screen.view.getString("mode").equals("storage")) {
+        } else if (stage == Stage.OPERATE && screen.view.getStringOr("mode", "").equals("storage")) {
             if (type.equals("rolling_lock")) {
                 check(step >= 3, "未验证错误暂停和锁定进度");
             } else if (type.equals("accelerated_decode")) {
@@ -176,14 +198,14 @@ public final class ClientPuzzleChecks {
             } else {
                 stage = Stage.PREPARE;
             }
-        } else if (stage == Stage.OPERATE && challenge.getString("type").equals(type)) {
+        } else if (stage == Stage.OPERATE && challenge.getStringOr("type", "").equals(type)) {
             switch (type) {
                 case "password" -> password(screen, challenge);
                 case "audio_morse" -> audio(screen, challenge);
                 case "pattern_morse" -> pattern(screen, challenge);
                 case "rolling_lock" -> rolling(screen, challenge);
                 case "accelerated_decode" -> {
-                    int elapsed = challenge.getInt("elapsed");
+                    int elapsed = challenge.getIntOr("elapsed", 0);
                     check(elapsed >= lastElapsed, "自然破译进度倒退");
                     lastElapsed = elapsed;
                     if (elapsed >= 160 && step == 0) {
@@ -200,22 +222,22 @@ public final class ClientPuzzleChecks {
         if (step == 0) {
             enter(screen, "472");
             step = 1;
-        } else if (step == 1 && challenge.getInt("pause") > 0) {
+        } else if (step == 1 && challenge.getIntOr("pause", 0) > 0) {
             check(screen.answer().isEmpty(), "错误密码没有清空");
             step = 2;
-        } else if (step == 2 && challenge.getInt("pause") == 0) {
+        } else if (step == 2 && challenge.getIntOr("pause", 0) == 0) {
             type(screen, "0472");
             capture = "puzzle-password";
             step = 3;
         } else if (step == 3 && capture == null) {
             check(screen.answer().equals("0472"), "输入框丢失前导零");
-            screen.keyPressed(GLFW.GLFW_KEY_ENTER, 0, 0);
+            screen.keyPressed(new KeyEvent(GLFW.GLFW_KEY_ENTER, 0, 0));
             step = 4;
         }
     }
 
     private static void audio(LootScreen screen, CompoundTag challenge) {
-        check(challenge.getString("signals").equals("... --- ..."), "摩斯题面不是预期的点划分组");
+        check(challenge.getStringOr("signals", "").equals("... --- ..."), "摩斯题面不是预期的点划分组");
         if (step == 0 && !TONES.isEmpty()) {
             capture = "puzzle-morse-receiver";
             step = 1;
@@ -226,38 +248,38 @@ public final class ClientPuzzleChecks {
         } else if (step == 2 && ticks >= delay) {
             int left = Math.max(12, (screen.width - 300) / 2);
             int cy = Math.max(56, screen.height / 2 - 22);
-            screen.mouseClicked(left + 8, cy - 6, 0);
-            screen.mouseReleased(left + 8, cy - 6, 0);
+            screen.mouseClicked(new MouseButtonEvent(left + 8, cy - 6, new MouseButtonInfo(0, 0)), false);
+            screen.mouseReleased(new MouseButtonEvent(left + 8, cy - 6, new MouseButtonInfo(0, 0)));
             step = 3;
         } else if (step == 3 && TONES.length() >= 18) {
-            check(TONES.toString().equals(SOS + SOS) && challenge.getInt("replay") == 1, "重播改变或缺失音符 " + TONES);
+            check(TONES.toString().equals(SOS + SOS) && challenge.getIntOr("replay", 0) == 1, "重播改变或缺失音符 " + TONES);
             enter(screen, "SOS");
             step = 4;
         }
     }
 
     private static void pattern(LootScreen screen, CompoundTag challenge) {
-        check(!challenge.getString("dot").equals(challenge.getString("dash")), "点划图案相同");
+        check(!challenge.getStringOr("dot", "").equals(challenge.getStringOr("dash", "")), "点划图案相同");
         int left = Math.max(12, (screen.width - 300) / 2);
         int cy = Math.max(56, screen.height / 2 - 22);
         if (step == 0) {
             capture = "puzzle-morse-plaque";
             step = 1;
         } else if (step == 1 && capture == null) {
-            screen.mouseClicked(screen.width - left - 20, cy - 5, 0);
+            screen.mouseClicked(new MouseButtonEvent(screen.width - left - 20, cy - 5, new MouseButtonInfo(0, 0)), false);
             capture = "puzzle-morse-chart";
             step = 2;
         } else if (step == 2 && capture == null) {
-            screen.mouseClicked(left + 10, screen.height - 38, 0);
+            screen.mouseClicked(new MouseButtonEvent(left + 10, screen.height - 38, new MouseButtonInfo(0, 0)), false);
             enter(screen, "SOS");
             step = 3;
         }
     }
 
     private static void rolling(LootScreen screen, CompoundTag challenge) {
-        int serverElapsed = challenge.getInt("elapsed");
-        int locked = challenge.getInt("locked");
-        int pauseTicks = challenge.getInt("pause");
+        int serverElapsed = challenge.getIntOr("elapsed", 0);
+        int locked = challenge.getIntOr("locked", 0);
+        int pauseTicks = challenge.getIntOr("pause", 0);
         if (lastRollView != challenge) {
             lastRollView = challenge;
             rollViewTick = ticks;
@@ -269,7 +291,7 @@ public final class ClientPuzzleChecks {
             lastColumn = locked;
         }
         if (step == 0) {
-            check(!screen.keyPressed(GLFW.GLFW_KEY_SPACE, 0, 0), "滚动锁仍接受旧挑战键");
+            check(!screen.keyPressed(new KeyEvent(GLFW.GLFW_KEY_SPACE, 0, 0)), "滚动锁仍接受旧挑战键");
             step = 1;
         }
         if (step == 2 && pauseTicks > 0) {
@@ -289,49 +311,51 @@ public final class ClientPuzzleChecks {
         if (step == 3 && pauseTicks == 0) {
             step = 4;
         }
-        if (pauseTicks > 0 || lastElapsed == elapsed || step == 2) {
+        if (pauseTicks > 0 || lastElapsed == elapsed || step == 2 || ticks - rollPressedAt < 6) {
             return;
         }
         lastElapsed = elapsed;
         boolean hitNow = centered(challenge, elapsed);
         boolean hitNext = centered(challenge, elapsed + 1);
-        if (locked == 1 && step == 1 && !hitNow && !hitNext && !centered(challenge, elapsed + 2)) {
+        if (locked == 1 && step == 1 && !hitNow && !hitNext && !centered(challenge, elapsed + 2) && !centered(challenge, Math.max(0, elapsed - 1))) {
             operate(screen);
+            rollPressedAt = ticks;
             step = 2;
         } else if (!(locked == 1 && step == 1) && hitNow && hitNext) {
             operate(screen);
+            rollPressedAt = ticks;
         }
     }
 
     private static boolean centered(CompoundTag challenge, int elapsed) {
-        int column = challenge.getInt("locked");
-        double phase = elapsed * challenge.getIntArray("directions")[column] / (double)challenge.getIntArray("periods")[column];
+        int column = challenge.getIntOr("locked", 0);
+        double phase = elapsed * challenge.getIntArray("directions").orElseThrow()[column] / (double)challenge.getIntArray("periods").orElseThrow()[column];
         int center = (int)Math.floor(phase + .5);
-        String alphabet = challenge.getString("alphabet");
-        return Math.abs(center - phase) <= .30 && alphabet.charAt(Math.floorMod(center, alphabet.length())) == challenge.getString("target").charAt(column);
+        String alphabet = challenge.getStringOr("alphabet", "");
+        return Math.abs(center - phase) <= .30 && alphabet.charAt(Math.floorMod(center, alphabet.length())) == challenge.getStringOr("target", "").charAt(column);
     }
 
     private static void operate(LootScreen screen) {
-        check(screen.keyPressed(GLFW.GLFW_KEY_R, 0, 0), "重绑挑战键未被识别");
-        screen.keyReleased(GLFW.GLFW_KEY_R, 0, 0);
+        check(screen.keyPressed(new KeyEvent(GLFW.GLFW_KEY_R, 0, 0)), "重绑挑战键未被识别");
+        screen.keyReleased(new KeyEvent(GLFW.GLFW_KEY_R, 0, 0));
     }
 
     private static void type(LootScreen screen, String text) {
         for (char c : text.toCharArray()) {
-            check(screen.charTyped(c, 0), "输入框未接收字符 " + c);
+            check(screen.charTyped(new CharacterEvent(c)), "输入框未接收字符 " + c);
         }
         check(screen.answer().equals(text), "输入框文本不符");
     }
 
     private static void enter(LootScreen screen, String text) {
         type(screen, text);
-        screen.keyPressed(GLFW.GLFW_KEY_ENTER, 0, 0);
+        screen.keyPressed(new KeyEvent(GLFW.GLFW_KEY_ENTER, 0, 0));
     }
 
     @SubscribeEvent
     public static void sound(PlaySoundSourceEvent event) {
         if (ENABLED) {
-            ResourceLocation id = event.getSound().getLocation();
+            Identifier id = event.getSound().getIdentifier();
             if (id.getNamespace().equals(ExtractionCore.ID)) {
                 if (id.getPath().equals("morse_dot")) {
                     TONES.append('.');
@@ -346,7 +370,7 @@ public final class ClientPuzzleChecks {
     public static void frame(RenderFrameEvent.Post event) {
         if (capture != null) {
             Minecraft mc = Minecraft.getInstance();
-            Screenshot.grab(DIR.toFile(), capture + ".png", mc.getMainRenderTarget(), result -> LOGGER.info("锁具画面 {}", result.getString()));
+            Screenshot.grab(DIR.toFile(), capture + ".png", mc.getMainRenderTarget(), 1, result -> LOGGER.info("锁具画面 {}", result.getString()));
             capture = null;
         }
     }

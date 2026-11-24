@@ -4,7 +4,7 @@ import net.minecraft.SharedConstants;
 import net.minecraft.core.RegistryAccess;
 import net.minecraft.core.component.DataComponents;
 import net.minecraft.core.registries.BuiltInRegistries;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.Bootstrap;
 import net.minecraft.server.packs.PackLocationInfo;
@@ -16,6 +16,13 @@ import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.item.component.CustomModelData;
+import net.minecraft.core.component.DataComponentInitializers;
+import net.minecraft.resources.RegistryDataLoader;
+import net.minecraft.server.RegistryLayer;
+import net.minecraft.server.ReloadableServerRegistries;
+import net.minecraft.server.packs.repository.ServerPacksSource;
+import net.minecraft.tags.TagLoader;
+import net.neoforged.neoforge.registries.DataPackRegistriesHooks;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -35,6 +42,18 @@ class GridTest {
     static void initializeItems() {
         SharedConstants.tryDetectVersion();
         Bootstrap.bootStrap();
+        // 默认组件引用物品标签与数据驱动注册项，使用与服务端相同的世界加载顺序。
+        try (var resources = new MultiPackResourceManager(PackType.SERVER_DATA, List.of(ServerPacksSource.createVanillaPackSource()))) {
+            var layers = RegistryLayer.createRegistryAccess();
+            var tags = TagLoader.loadTagsForExistingRegistries(resources, layers.getLayer(RegistryLayer.STATIC));
+            var context = TagLoader.buildUpdatedLookups(layers.getAccessForLoading(RegistryLayer.WORLDGEN), tags);
+            var worldgen = RegistryDataLoader.load(resources, context, DataPackRegistriesHooks.getDataPackRegistries(),
+                Runnable::run, tags).join();
+            var loaded = ReloadableServerRegistries.reload(layers.replaceFrom(RegistryLayer.WORLDGEN, worldgen),
+                tags, resources, Runnable::run).join();
+            BuiltInRegistries.DATA_COMPONENT_INITIALIZERS.build(loaded.lookupWithUpdatedTags())
+                .forEach(DataComponentInitializers.PendingComponents::apply);
+        }
     }
 
     private static Grid.Entry entry(Item item, int count, List<String> shape, int x) {
@@ -160,12 +179,12 @@ class GridTest {
             """);
         var registry = RegistryAccess.fromRegistryOfRegistries(BuiltInRegistries.REGISTRY);
         try (var manager = new MultiPackResourceManager(PackType.SERVER_DATA, List.of(pack(low), pack(high)))) {
-            var tag = ResourceLocation.parse("foo:tools");
+            var tag = Identifier.parse("foo:tools");
             RuleBook book = RuleBook.resolve(RuleBook.read(manager), Map.of(tag, List.of(Items.COMPASS.builtInRegistryHolder())), registry);
             Grid.Quality expected = new Grid.Quality("精工", 0xEE8800, false);
             assertEquals(expected, book.item(new ItemStack(Items.COMPASS)).quality().orElseThrow());
             assertEquals(expected, book.item(new ItemStack(Items.IRON_NUGGET)).quality().orElseThrow());
-            var stored = book.backpack(ResourceLocation.parse("bar:bag")).orElseThrow();
+            var stored = book.backpack(Identifier.parse("bar:bag")).orElseThrow();
             Grid.Section restored = RuleBook.restoreStorage(stored.definition(), true).sections().getFirst();
             assertTrue(restored.accepts(new ItemStack(Items.COMPASS)));
             assertFalse(restored.accepts(new ItemStack(Items.IRON_NUGGET)));
@@ -191,7 +210,7 @@ class GridTest {
               "items":{
                 "foo:a_tools":{"item":{"items":["minecraft:tripwire_hook","minecraft:compass"]},"grid_stack_limit":3},
                 "foo:b_hook":{"item":{"items":"minecraft:tripwire_hook"},"quality":"foo:precision"},
-                "foo:c_model":{"item":{"items":"minecraft:tripwire_hook","components":{"minecraft:custom_model_data":7}},"quality":{"id":"disable"}}
+                "foo:c_model":{"item":{"items":"minecraft:tripwire_hook","components":{"minecraft:custom_model_data":{"floats":[7.0]}}},"quality":{"id":"disable"}}
               },
               "containers":{"foo:locker":{"sections":[{"id":"main","shape":["X"]}],
                 "access":{"routes":[{"steps":[{"type":"password","answer":"0472"}]}]}}}
@@ -204,11 +223,11 @@ class GridTest {
         Grid.Style normal = book.item(hook);
         assertEquals("精工", normal.quality().orElseThrow().name());
         assertEquals(Grid.Style.DEFAULT.stackLimit(), normal.stackLimit());
-        hook.set(DataComponents.CUSTOM_MODEL_DATA, new CustomModelData(7));
+        hook.set(DataComponents.CUSTOM_MODEL_DATA, new CustomModelData(List.of(7f), List.of(), List.of(), List.of()));
         assertTrue(book.item(hook).quality().orElseThrow().disabled());
         RuleBook.installPublicItems(book.publicItems(), registries);
         RuleBook previous = RuleBook.client();
-        assertTrue(previous.container(ResourceLocation.parse("foo:locker")).isEmpty());
+        assertTrue(previous.container(Identifier.parse("foo:locker")).isEmpty());
         assertTrue(previous.item(hook).quality().orElseThrow().disabled());
         IllegalArgumentException error = assertThrows(IllegalArgumentException.class, () ->
             RuleBook.installPublicItems(book.publicItems().replace("\"quality\":\"foo:precision\"", "\"quality\":\"foo:missing\""), registries));

@@ -1,5 +1,7 @@
 package dev.extraction.core.server;
 
+import net.minecraft.nbt.NbtOps;
+import net.minecraft.core.UUIDUtil;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
@@ -16,7 +18,7 @@ import net.minecraft.nbt.StringTag;
 import net.minecraft.nbt.Tag;
 import net.minecraft.network.chat.Style;
 import net.minecraft.resources.ResourceKey;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.storage.loot.LootParams;
@@ -57,19 +59,19 @@ final class StoredGrid {
         this.save = save;
         this.layout = definition;
         this.definition = definition.definition();
-        if (previous.contains("item_rules", Tag.TAG_BYTE_ARRAY)) {
-            this.itemSnapshot = previous.getByteArray("item_rules");
+        if (previous.get("item_rules") instanceof net.minecraft.nbt.ByteArrayTag) {
+            this.itemSnapshot = previous.getByteArray("item_rules").orElseGet(() -> new byte[0]);
             this.itemRules = RuleBook.restore(new String(itemSnapshot, StandardCharsets.UTF_8), registries);
         } else {
             this.itemRules = RuleBook.current();
             this.itemSnapshot = itemRules.publicItems().getBytes(StandardCharsets.UTF_8);
         }
-        this.unlocked = previous.getBoolean("unlocked") || routes().isEmpty();
-        this.generated = previous.getBoolean("generated");
-        this.revision = previous.getLong("revision");
-        this.discoveries = previous.getCompound("discoveries").copy();
-        this.entries = readEntries(previous.getList("entries", Tag.TAG_COMPOUND));
-        this.pending = readEntries(previous.getList("pending", Tag.TAG_COMPOUND));
+        this.unlocked = previous.getBooleanOr("unlocked", false) || routes().isEmpty();
+        this.generated = previous.getBooleanOr("generated", false);
+        this.revision = previous.getLongOr("revision", 0L);
+        this.discoveries = previous.getCompoundOrEmpty("discoveries").copy();
+        this.entries = readEntries(previous.getListOrEmpty("entries"));
+        this.pending = readEntries(previous.getListOrEmpty("pending"));
         if (!previous.contains("layout")) {
             persist();
         }
@@ -86,6 +88,7 @@ final class StoredGrid {
         if (unlocked || !challenge.complete() || !challenge.allowed(player, position, true)) {
             return false;
         }
+        player.containerMenu.broadcastChanges();
         unlocked = true;
         revision++;
         if (generated) {
@@ -101,9 +104,9 @@ final class StoredGrid {
             return;
         }
         if (definition.has("loot_table")) {
-            ResourceLocation id = ResourceLocation.parse(definition.get("loot_table").getAsString());
-            var loot = player.serverLevel().getServer().reloadableRegistries().getLootTable(ResourceKey.create(Registries.LOOT_TABLE, id));
-            LootParams params = new LootParams.Builder(player.serverLevel())
+            Identifier id = Identifier.parse(definition.get("loot_table").getAsString());
+            var loot = player.level().getServer().reloadableRegistries().getLootTable(ResourceKey.create(Registries.LOOT_TABLE, id));
+            LootParams params = new LootParams.Builder(player.level())
                 .withParameter(LootContextParams.ORIGIN, Vec3.atCenterOf(position))
                 .withOptionalParameter(LootContextParams.THIS_ENTITY, player)
                 .withLuck(player.getLuck()).create(LootContextParamSets.CHEST);
@@ -162,8 +165,8 @@ final class StoredGrid {
     }
 
     static JsonObject savedLayout(CompoundTag data) {
-        String json = data.contains("layout", Tag.TAG_BYTE_ARRAY)
-            ? new String(data.getByteArray("layout"), StandardCharsets.UTF_8) : data.getString("layout");
+        String json = data.get("layout") instanceof net.minecraft.nbt.ByteArrayTag
+            ? new String(data.getByteArray("layout").orElseGet(() -> new byte[0]), StandardCharsets.UTF_8) : data.getStringOr("layout", "");
         return JsonParser.parseString(json).getAsJsonObject();
     }
 
@@ -171,9 +174,9 @@ final class StoredGrid {
         if (!discoveries.isEmpty()) {
             Set<String> live = new HashSet<>();
             entries.forEach(item -> live.add(item.id().toString()));
-            for (String player : discoveries.getAllKeys()) {
-                CompoundTag record = discoveries.getCompound(player);
-                record.getAllKeys().removeIf(key -> !key.startsWith("section_") && !live.contains(key));
+            for (String player : discoveries.keySet()) {
+                CompoundTag record = discoveries.getCompoundOrEmpty(player);
+                record.keySet().removeIf(key -> !key.startsWith("section_") && !live.contains(key));
             }
         }
         CompoundTag data = new CompoundTag();
@@ -192,11 +195,11 @@ final class StoredGrid {
         List<Grid.Entry> result = new ArrayList<>();
         for (var tag : records) {
             CompoundTag data = (CompoundTag)tag;
-            ItemStack stack = ItemStack.parse(registries, data.getCompound("stack"))
-                .orElseThrow(() -> new IllegalStateException("无效的库存物品 " + data.getUUID("id")));
-            Grid.Style itemStyle = Grid.Style.fromJson(JsonParser.parseString(data.getString("style")).getAsJsonObject());
-            result.add(new Grid.Entry(data.getUUID("id"), stack, itemStyle, data.getInt("section"),
-                data.getInt("x"), data.getInt("y"), data.getInt("rotation")));
+            ItemStack stack = data.read("stack", ItemStack.CODEC, registries.createSerializationContext(NbtOps.INSTANCE))
+                .orElseThrow(() -> new IllegalStateException("无效的库存物品 " + data.read("id", UUIDUtil.CODEC).orElseThrow()));
+            Grid.Style itemStyle = Grid.Style.fromJson(JsonParser.parseString(data.getStringOr("style", "")).getAsJsonObject());
+            result.add(new Grid.Entry(data.read("id", UUIDUtil.CODEC).orElseThrow(), stack, itemStyle, data.getIntOr("section", 0),
+                data.getIntOr("x", 0), data.getIntOr("y", 0), data.getIntOr("rotation", 0)));
         }
         return result;
     }
@@ -216,7 +219,7 @@ final class StoredGrid {
         if (!discoveries.contains(key)) {
             discoveries.put(key, new CompoundTag());
         }
-        return discoveries.getCompound(key);
+        return discoveries.getCompoundOrEmpty(key);
     }
 
     boolean instant() {
@@ -236,11 +239,11 @@ final class StoredGrid {
     }
 
     boolean visible(UUID player, Grid.Entry item) {
-        return instant() || discovery(player).getBoolean(item.id().toString());
+        return instant() || discovery(player).getBooleanOr(item.id().toString(), false);
     }
 
     boolean done(UUID player, int section) {
-        return instant() || (discovery(player).getBoolean("section_" + section)
+        return instant() || (discovery(player).getBooleanOr("section_" + section, false)
             && entries.stream().noneMatch(item -> item.section() == section && !visible(player, item)));
     }
 
@@ -278,7 +281,7 @@ final class StoredGrid {
             data.putString("id", section.id());
             data.put("shape", rows(section.shape().rows()));
             section.acceptsTag().ifPresent(tag -> data.putString("accepts_tag", tag.toString()));
-            section.acceptedItems().ifPresent(ids -> data.put("accepted_items", rows(ids.stream().sorted().map(ResourceLocation::toString).toList())));
+            section.acceptedItems().ifPresent(ids -> data.put("accepted_items", rows(ids.stream().sorted().map(Identifier::toString).toList())));
             data.putBoolean("done", done(player, i++));
             sections.add(data);
         }
@@ -305,8 +308,8 @@ final class StoredGrid {
 
     private CompoundTag itemData(Grid.Entry entry) {
         CompoundTag tag = new CompoundTag();
-        tag.putUUID("id", entry.id());
-        tag.put("stack", entry.stack().saveOptional(registries));
+        tag.store("id", UUIDUtil.CODEC, entry.id());
+        tag.store("stack", ItemStack.CODEC, registries.createSerializationContext(NbtOps.INSTANCE), entry.stack());
         tag.putInt("section", entry.section());
         tag.putInt("x", entry.x());
         tag.putInt("y", entry.y());

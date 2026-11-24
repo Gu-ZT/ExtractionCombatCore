@@ -10,12 +10,12 @@ description="由数据包定义的开锁、翻找与异形背包。"
 [[dependencies.extractioncombatcore]]
 modId="minecraft"
 type="required"
-versionRange="[1.21.1,1.21.2)"
+versionRange="[26.1.2,26.1.3)"
 side="BOTH"
 [[dependencies.extractioncombatcore]]
 modId="neoforge"
 type="required"
-versionRange="[21.1.238,21.2)"
+versionRange="[26.1.2.126,26.1.3)"
 side="BOTH"
 [[dependencies.extractioncombatcore]]
 modId="anvillib_rpc"

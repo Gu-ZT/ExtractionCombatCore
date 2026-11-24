@@ -5,7 +5,7 @@ import dev.extraction.core.network.ExtractionNetwork;
 import dev.extraction.core.rules.RuleBook;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.network.chat.Component;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 import net.minecraft.world.item.BlockItem;
 import net.minecraft.world.item.CreativeModeTab;
 import net.minecraft.world.item.Item;
@@ -35,17 +35,17 @@ public final class ExtractionCore {
     private static final DeferredRegister<BlockEntityType<?>> ENTITIES = DeferredRegister.create(Registries.BLOCK_ENTITY_TYPE, ID);
     private static final DeferredRegister<AttachmentType<?>> ATTACHMENTS = DeferredRegister.create(NeoForgeRegistries.ATTACHMENT_TYPES, ID);
     private static final DeferredRegister<CreativeModeTab> TABS = DeferredRegister.create(Registries.CREATIVE_MODE_TAB, ID);
-    public static final Supplier<Item> PACK = ITEMS.register("backpack", () -> new FieldPack(new Item.Properties().stacksTo(1)));
-    public static final Supplier<Block> CABINET = BLOCKS.register("cabinet", () -> new CabinetBlock(
-        BlockBehaviour.Properties.of().strength(-1, 3600000).pushReaction(PushReaction.BLOCK).noLootTable()));
-    public static final Supplier<BlockItem> CABINET_ITEM = ITEMS.register("cabinet", () -> new BlockItem(CABINET.get(), new Item.Properties()));
+    public static final Supplier<Item> PACK = ITEMS.registerItem("backpack", FieldPack::new, props -> props.stacksTo(1));
+    public static final Supplier<Block> CABINET = BLOCKS.registerBlock("cabinet", CabinetBlock::new,
+        props -> props.strength(-1, 3600000).pushReaction(PushReaction.BLOCK).noLootTable());
+    public static final Supplier<BlockItem> CABINET_ITEM = ITEMS.registerSimpleBlockItem("cabinet", CABINET);
     public static final Supplier<Item> KEY = ITEMS.registerSimpleItem("service_key");
-    public static final Supplier<Item> DECODER = ITEMS.registerSimpleItem("decoder", new Item.Properties().durability(128));
+    public static final Supplier<Item> DECODER = ITEMS.registerSimpleItem("decoder", props -> props.durability(128));
     public static final Supplier<Item> HOOK = ITEMS.registerSimpleItem("service_hook");
     public static final Supplier<BlockEntityType<CabinetEntity>> CABINET_ENTITY = ENTITIES.register("cabinet",
-        () -> BlockEntityType.Builder.of(CabinetEntity::new, CABINET.get()).build(null));
+        () -> new BlockEntityType<>(CabinetEntity::new, CABINET.get()));
     public static final Supplier<AttachmentType<ItemStack>> EQUIPPED = ATTACHMENTS.register("equipped_backpack",
-        () -> AttachmentType.builder(() -> ItemStack.EMPTY).serialize(ItemStack.OPTIONAL_CODEC).copyOnDeath().build());
+        () -> AttachmentType.builder(() -> ItemStack.EMPTY).serialize(ItemStack.MAP_CODEC, stack -> !stack.isEmpty()).copyOnDeath().build());
     public static final List<String> DEMO_CABINETS = List.of("service_cabinet", "password", "audio_morse", "pattern_morse", "rolling_lock", "tool_rack");
     static final ModConfigSpec.BooleanValue MAIN;
     static final ModConfigSpec.IntValue HOTBAR;
@@ -80,7 +80,7 @@ public final class ExtractionCore {
         NeoForge.EVENT_BUS.addListener(MapCommands::register);
     }
 
-    public static ResourceLocation id(String path) {
-        return ResourceLocation.fromNamespaceAndPath(ID, path);
+    public static Identifier id(String path) {
+        return Identifier.fromNamespaceAndPath(ID, path);
     }
 }

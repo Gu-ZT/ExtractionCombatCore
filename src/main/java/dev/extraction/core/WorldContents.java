@@ -1,14 +1,20 @@
 package dev.extraction.core;
 
-import net.minecraft.core.HolderLookup;
+import com.mojang.serialization.codecs.RecordCodecBuilder;
+import net.minecraft.world.level.saveddata.SavedDataType;
 import net.minecraft.nbt.CompoundTag;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.saveddata.SavedData;
 
 import java.util.UUID;
 
 final class WorldContents extends SavedData {
+    private static final SavedDataType<WorldContents> TYPE = new SavedDataType<>(ExtractionCore.id("world_contents"),
+        WorldContents::new, RecordCodecBuilder.create(instance -> instance.group(
+            CompoundTag.CODEC.fieldOf("packs").forGetter(data -> data.packs),
+            CompoundTag.CODEC.fieldOf("flags").forGetter(data -> data.flags)
+        ).apply(instance, WorldContents::new)), null);
     private final CompoundTag packs;
     private final CompoundTag flags;
 
@@ -22,13 +28,11 @@ final class WorldContents extends SavedData {
     }
 
     static WorldContents get(ServerLevel level) {
-        return level.getServer().overworld().getDataStorage().computeIfAbsent(
-            new Factory<>(WorldContents::new, (tag, registries) -> new WorldContents(tag.getCompound("packs"), tag.getCompound("flags")), null),
-            ExtractionCore.ID);
+        return level.getServer().overworld().getDataStorage().computeIfAbsent(TYPE);
     }
 
     CompoundTag pack(UUID id) {
-        return packs.getCompound(id.toString()).copy();
+        return packs.getCompoundOrEmpty(id.toString()).copy();
     }
 
     void savePack(UUID id, CompoundTag data) {
@@ -36,11 +40,11 @@ final class WorldContents extends SavedData {
         setDirty();
     }
 
-    boolean flag(ResourceLocation id) {
-        return flags.getBoolean(id.toString());
+    boolean flag(Identifier id) {
+        return flags.getBooleanOr(id.toString(), false);
     }
 
-    void flag(ResourceLocation id, boolean value) {
+    void flag(Identifier id, boolean value) {
         if (value) {
             flags.putBoolean(id.toString(), true);
         } else {
@@ -49,10 +53,4 @@ final class WorldContents extends SavedData {
         setDirty();
     }
 
-    @Override
-    public CompoundTag save(CompoundTag tag, HolderLookup.Provider registries) {
-        tag.put("packs", packs.copy());
-        tag.put("flags", flags.copy());
-        return tag;
-    }
 }
