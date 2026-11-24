@@ -1,20 +1,13 @@
 package dev.extraction.core.client;
 
 import com.mojang.blaze3d.platform.NativeImage;
-import com.mojang.blaze3d.systems.RenderSystem;
-import com.mojang.blaze3d.vertex.BufferBuilder;
-import com.mojang.blaze3d.vertex.BufferUploader;
-import com.mojang.blaze3d.vertex.DefaultVertexFormat;
-import com.mojang.blaze3d.vertex.Tesselator;
-import com.mojang.blaze3d.vertex.VertexFormat;
 import com.mojang.logging.LogUtils;
 import com.mojang.math.Axis;
 import dev.extraction.core.rules.Shape;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
-import net.minecraft.client.renderer.GameRenderer;
+import net.minecraft.client.renderer.RenderType;
 import net.minecraft.resources.ResourceLocation;
-import org.joml.Matrix4f;
 import org.slf4j.Logger;
 
 import java.io.IOException;
@@ -71,9 +64,7 @@ final class ItemIcons {
         double scale = 16d / Math.max(icon.width(), icon.height());
         int w = Math.max(1, (int) Math.round(icon.width() * scale));
         int h = Math.max(1, (int) Math.round(icon.height() * scale));
-        RenderSystem.enableBlend();
-        g.blit(icon.file(), x + (16 - w) / 2, y + (16 - h) / 2, w, h,
-            0f, 0f, icon.width(), icon.height(), icon.width(), icon.height());
+        g.blit(RenderType::guiTextured, icon.file(), x + (16 - w) / 2, y + (16 - h) / 2, 0f, 0f, w, h, icon.width(), icon.height(), icon.width(), icon.height());
         return true;
     }
 
@@ -88,35 +79,33 @@ final class ItemIcons {
             y + (rotation == 2 ? h : rotation == 3 ? w : 0), 0);
         g.pose().mulPose(Axis.ZP.rotationDegrees(90f * rotation));
         if (icon != null) {
-            RenderSystem.enableBlend();
-            // 按连续占格绘制对应 UV，孔位保留给夹在其中的其他物品。
-            RenderSystem.setShaderTexture(0, icon.file());
-            RenderSystem.setShader(GameRenderer::getPositionTexShader);
-            Matrix4f pose = g.pose().last().pose();
-            BufferBuilder quads = Tesselator.getInstance().begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION_TEX);
-            for (int row = 0; row < base.height(); row++) {
-                String cells = base.rows().get(row);
-                for (int col = 0; col < cells.length();) {
-                    if (cells.charAt(col) != 'X') {
-                        col++;
-                        continue;
+            // 逐段使用归一化 UV，即使贴图尺寸不是格数的整数倍也能保留孔位边缘。
+            var pose = g.pose().last().pose();
+            g.drawSpecial(buffers -> {
+                var quads = buffers.getBuffer(RenderType.guiTextured(icon.file()));
+                for (int row = 0; row < base.height(); row++) {
+                    String cells = base.rows().get(row);
+                    for (int col = 0; col < cells.length();) {
+                        if (cells.charAt(col) != 'X') {
+                            col++;
+                            continue;
+                        }
+                        int end = col + 1;
+                        while (end < cells.length() && cells.charAt(end) == 'X') {
+                            end++;
+                        }
+                        float u1 = (float) col / base.width();
+                        float v1 = (float) row / base.height();
+                        float u2 = (float) end / base.width();
+                        float v2 = (float) (row + 1) / base.height();
+                        quads.addVertex(pose, col * cell, row * cell, 0).setUv(u1, v1).setColor(-1);
+                        quads.addVertex(pose, col * cell, (row + 1) * cell, 0).setUv(u1, v2).setColor(-1);
+                        quads.addVertex(pose, end * cell, (row + 1) * cell, 0).setUv(u2, v2).setColor(-1);
+                        quads.addVertex(pose, end * cell, row * cell, 0).setUv(u2, v1).setColor(-1);
+                        col = end;
                     }
-                    int end = col + 1;
-                    while (end < cells.length() && cells.charAt(end) == 'X') {
-                        end++;
-                    }
-                    float u1 = (float) col / base.width();
-                    float v1 = (float) row / base.height();
-                    float u2 = (float) end / base.width();
-                    float v2 = (float) (row + 1) / base.height();
-                    quads.addVertex(pose, col * cell, row * cell, 0).setUv(u1, v1);
-                    quads.addVertex(pose, col * cell, (row + 1) * cell, 0).setUv(u1, v2);
-                    quads.addVertex(pose, end * cell, (row + 1) * cell, 0).setUv(u2, v2);
-                    quads.addVertex(pose, end * cell, row * cell, 0).setUv(u2, v1);
-                    col = end;
                 }
-            }
-            BufferUploader.drawWithShader(quads.buildOrThrow());
+            });
         }
         g.pose().popPose();
         if (icon == null) {

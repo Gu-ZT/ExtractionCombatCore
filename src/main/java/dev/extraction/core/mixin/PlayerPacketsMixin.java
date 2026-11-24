@@ -1,7 +1,7 @@
 package dev.extraction.core.mixin;
 
 import dev.extraction.core.GameAccess;
-import net.minecraft.network.protocol.game.ClientboundSetCarriedItemPacket;
+import net.minecraft.network.protocol.game.ClientboundSetHeldSlotPacket;
 import net.minecraft.network.protocol.game.ServerboundPlayerActionPacket;
 import net.minecraft.network.protocol.game.ServerboundSetCarriedItemPacket;
 import net.minecraft.network.protocol.game.ServerboundSetCreativeModeSlotPacket;
@@ -23,7 +23,7 @@ abstract class PlayerPacketsMixin {
             if (!GameAccess.enabled(player.getInventory().selected)) {
                 player.getInventory().selected = 0;
             }
-            player.connection.send(new ClientboundSetCarriedItemPacket(player.getInventory().selected));
+            player.connection.send(new ClientboundSetHeldSlotPacket(player.getInventory().selected));
             ci.cancel();
         }
     }

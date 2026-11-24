@@ -1,5 +1,6 @@
 package dev.extraction.core.client;
 
+import net.minecraft.client.renderer.RenderType;
 import com.mojang.blaze3d.systems.RenderSystem;
 import dev.extraction.core.rules.Shape;
 import net.minecraft.client.Minecraft;
@@ -355,7 +356,7 @@ final class StorageView {
                 int gx = s.x + Math.min(walk, span * 2 - walk);
                 int gy = s.y + (s.shape.height() * CELL - 16) / 2;
                 RenderSystem.enableBlend();
-                g.blit(LENS, gx, gy, 0f, 0f, 16, 16, 16, 16);
+                g.blit(RenderType::guiTextured, LENS, gx, gy, 0f, 0f, 16, 16, 16, 16);
             }
         }
         if (moving && dragged != null) {

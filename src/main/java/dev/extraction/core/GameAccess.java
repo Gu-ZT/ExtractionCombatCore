@@ -103,6 +103,10 @@ public final class GameAccess {
         return player.level().isClientSide ? clientPolicy : serverPolicy();
     }
 
+    public static int scrolledSlot(double direction, int selected, int hotbar) {
+        return hotbar == 0 ? 0 : Math.floorMod(selected - (int) Math.signum(direction), hotbar);
+    }
+
     public static InventoryPolicy clientPolicy() {
         return clientPolicy;
     }

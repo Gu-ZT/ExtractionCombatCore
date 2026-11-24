@@ -12,12 +12,14 @@ import net.minecraft.client.gui.screens.TitleScreen;
 import net.minecraft.client.server.IntegratedServer;
 import net.minecraft.client.tutorial.TutorialSteps;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.Difficulty;
+import net.minecraft.world.InteractionHand;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.GameRules;
 import net.minecraft.world.level.GameType;
@@ -27,6 +29,8 @@ import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.levelgen.WorldOptions;
 import net.minecraft.world.level.levelgen.presets.WorldPresets;
+import net.minecraft.world.phys.BlockHitResult;
+import net.minecraft.world.phys.Vec3;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
@@ -66,6 +70,7 @@ public final class ClientPuzzleChecks {
     private static CompoundTag lastRollView;
     private static int rollViewTick;
     private static int lastColumn = -1;
+    private static int rollPressedAt = -100;
     private static String capture;
     private static boolean stopped;
     private static CompletableFuture<Void> fixture;
@@ -107,30 +112,39 @@ public final class ClientPuzzleChecks {
             KeyMapping.resetMapping();
             stage = Stage.PREPARE;
             LevelSettings settings = new LevelSettings("锁具验收", GameType.SURVIVAL, false, Difficulty.PEACEFUL, true,
-                new GameRules(), WorldDataConfiguration.DEFAULT);
+                new GameRules(WorldDataConfiguration.DEFAULT.enabledFeatures()), WorldDataConfiguration.DEFAULT);
             mc.createWorldOpenFlows().createFreshLevel("extraction-puzzles-" + System.currentTimeMillis(), settings,
-                new WorldOptions(165, false, false), registries -> registries.registryOrThrow(Registries.WORLD_PRESET)
-                    .getHolderOrThrow(WorldPresets.FLAT).value().createWorldDimensions(), new TitleScreen());
+                new WorldOptions(165, false, false), registries -> registries.lookupOrThrow(Registries.WORLD_PRESET)
+                    .getOrThrow(WorldPresets.FLAT).value().createWorldDimensions(), new TitleScreen());
             return;
         }
         if (mc.level == null || mc.player == null) {
             return;
         }
         String type = TYPES.get(index);
+        BlockPos cabinetPos = POS.offset(index * 5, 0, 0);
+        Vec3 playerPos = new Vec3(cabinetPos.getX() + .4, cabinetPos.getY(), cabinetPos.getZ() + 2.4);
+        if (ticks % 160 == 0) {
+            String screenName = mc.screen == null ? "世界" : mc.screen.getClass().getSimpleName();
+            String details = mc.screen instanceof LootScreen loot
+                ? loot.view.getString("mode") + "/" + loot.view.getCompound("challenge").getString("type")
+                    + " " + loot.view.getString("message") : "";
+            LOGGER.info("锁具 {} 阶段 {}/{}，屏幕 {} {}，柜体 {}，距测试站位 {}", type, stage, step, screenName,
+                details, mc.level.getBlockState(cabinetPos), mc.player.position().distanceTo(playerPos));
+        }
         if (stage == Stage.PREPARE && mc.screen == null) {
             IntegratedServer server = mc.getSingleplayerServer();
             fixture = server.submit(() -> {
                 ServerLevel level = server.overworld();
                 ServerPlayer player = server.getPlayerList().getPlayers().getFirst();
-                for (BlockPos p : BlockPos.betweenClosed(POS.offset(-2, -1, -2), POS.offset(2, -1, 3))) {
+                for (BlockPos p : BlockPos.betweenClosed(cabinetPos.offset(-2, -1, -2), cabinetPos.offset(2, -1, 3))) {
                     level.setBlockAndUpdate(p, Blocks.STONE.defaultBlockState());
                 }
-                level.setBlockAndUpdate(POS, Blocks.AIR.defaultBlockState());
                 Block cabinet = ExtractionCore.CABINET.get();
-                level.setBlockAndUpdate(POS, cabinet.defaultBlockState());
-                ((CabinetEntity) level.getBlockEntity(POS)).bind(ExtractionCore.id(type.equals("accelerated_decode") ? "service_cabinet" : type));
-                level.setBlockAndUpdate(POS.west(), Blocks.REDSTONE_BLOCK.defaultBlockState());
-                player.connection.teleport(POS.getX() + .4, POS.getY(), POS.getZ() + 2.4, 180, 18);
+                level.setBlockAndUpdate(cabinetPos, cabinet.defaultBlockState());
+                ((CabinetEntity) level.getBlockEntity(cabinetPos)).bind(ExtractionCore.id(type.equals("accelerated_decode") ? "service_cabinet" : type));
+                level.setBlockAndUpdate(cabinetPos.west(), Blocks.REDSTONE_BLOCK.defaultBlockState());
+                player.connection.teleport(playerPos.x, playerPos.y, playerPos.z, 180, 18);
                 player.getInventory().selected = 0;
                 player.getInventory().setItem(0, type.equals("accelerated_decode") ? new ItemStack(ExtractionCore.DECODER.get()) : ItemStack.EMPTY);
                 player.inventoryMenu.broadcastChanges();
@@ -144,9 +158,13 @@ public final class ClientPuzzleChecks {
             LOGGER.info("准备验收锁具 {}", type);
             return;
         }
-        if (stage == Stage.OPEN && fixture.isDone() && mc.screen == null && mc.level.getBlockState(POS).is(ExtractionCore.CABINET.get())) {
+        // 收到该柜的区块数据与传送后再右键，服务端才已按顺序收到本次传送的确认。
+        if (stage == Stage.OPEN && fixture.isDone() && mc.screen == null && mc.player.position().distanceToSqr(playerPos) < .1
+            && mc.level.getBlockState(cabinetPos).is(ExtractionCore.CABINET.get())) {
             fixture.join();
-            ClientPlaythrough.useCabinet(mc);
+            Vec3 point = Vec3.atCenterOf(cabinetPos).add(0, 0, .5);
+            mc.gameMode.useItemOn(mc.player, InteractionHand.MAIN_HAND, new BlockHitResult(point, Direction.SOUTH, cabinetPos, false));
+            LOGGER.info("客户端已到达 {} 并右键 {}", playerPos, cabinetPos);
             stage = Stage.ROUTE;
             return;
         }
@@ -156,6 +174,7 @@ public final class ClientPuzzleChecks {
         CompoundTag challenge = screen.view.getCompound("challenge");
         if (stage == Stage.ROUTE) {
             check(screen.view.getString("mode").equals("lock"), "演示柜初始没有上锁 " + type);
+            LOGGER.info("选择 {} 的真实路线 {}", type, screen.view.get("routes"));
             if (type.equals("accelerated_decode")) {
                 screen.keyPressed(GLFW.GLFW_KEY_DOWN, 0, 0);
             }
@@ -289,17 +308,19 @@ public final class ClientPuzzleChecks {
         if (step == 3 && pauseTicks == 0) {
             step = 4;
         }
-        if (pauseTicks > 0 || lastElapsed == elapsed || step == 2) {
+        if (pauseTicks > 0 || lastElapsed == elapsed || step == 2 || ticks - rollPressedAt < 6) {
             return;
         }
         lastElapsed = elapsed;
         boolean hitNow = centered(challenge, elapsed);
         boolean hitNext = centered(challenge, elapsed + 1);
-        if (locked == 1 && step == 1 && !hitNow && !hitNext && !centered(challenge, elapsed + 2)) {
+        if (locked == 1 && step == 1 && !hitNow && !hitNext && !centered(challenge, elapsed + 2) && !centered(challenge, Math.max(0, elapsed - 1))) {
             operate(screen);
+            rollPressedAt = ticks;
             step = 2;
         } else if (!(locked == 1 && step == 1) && hitNow && hitNext) {
             operate(screen);
+            rollPressedAt = ticks;
         }
     }
 

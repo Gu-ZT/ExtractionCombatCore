@@ -1,5 +1,6 @@
 package dev.extraction.core.client;
 
+import dev.extraction.core.ExtractionCore;
 import com.mojang.blaze3d.platform.InputConstants;
 import dev.extraction.core.GameAccess;
 import dev.extraction.core.network.ExtractionNetwork;
@@ -18,7 +19,7 @@ import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.neoforge.client.event.ClientPlayerNetworkEvent;
 import net.neoforged.neoforge.client.event.ClientTickEvent;
 import net.neoforged.neoforge.client.event.ContainerScreenEvent;
-import net.neoforged.neoforge.client.event.RegisterClientReloadListenersEvent;
+import net.neoforged.neoforge.client.event.AddClientReloadListenersEvent;
 import net.neoforged.neoforge.client.event.RegisterKeyMappingsEvent;
 import net.neoforged.neoforge.client.event.RenderGuiLayerEvent;
 import net.neoforged.neoforge.client.event.ScreenEvent;
@@ -53,8 +54,8 @@ public final class ExtractionClient {
         }
 
         @SubscribeEvent
-        public static void textures(RegisterClientReloadListenersEvent event) {
-            event.registerReloadListener((ResourceManagerReloadListener) resources -> ItemIcons.reload());
+        public static void textures(AddClientReloadListenersEvent event) {
+            event.addListener(ExtractionCore.id("icons"), (ResourceManagerReloadListener) resources -> ItemIcons.reload());
         }
     }
 

@@ -1,6 +1,6 @@
 package dev.extraction.core;
 
-import net.minecraft.network.protocol.game.ClientboundSetCarriedItemPacket;
+import net.minecraft.network.protocol.game.ClientboundSetHeldSlotPacket;
 import net.minecraft.server.level.ServerPlayer;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
@@ -30,7 +30,7 @@ public final class MapInteractions {
         if (event.getEntity() instanceof ServerPlayer player && player.getInventory().selected != 0
             && !GameAccess.enabled(player.getInventory().selected)) {
             player.getInventory().selected = 0;
-            player.connection.send(new ClientboundSetCarriedItemPacket(0));
+            player.connection.send(new ClientboundSetHeldSlotPacket(0));
         }
     }
 }

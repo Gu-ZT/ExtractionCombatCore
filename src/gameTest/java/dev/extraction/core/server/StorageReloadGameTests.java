@@ -76,6 +76,7 @@ public final class StorageReloadGameTests {
         bag.persist();
         Path archive = installCompactPack(server.getWorldPath(LevelResource.DATAPACK_DIR));
         String testPack = "file/" + archive.getFileName();
+        ItemStack fresh = GameAccess.bound(ExtractionCore.PACK.get(), PACK);
         List<String> selected = new ArrayList<>(original);
         selected.add(testPack);
         try {
@@ -92,9 +93,11 @@ public final class StorageReloadGameTests {
             StoredGrid saved = LootSessions.bag(player, oldPack);
             test.assertTrue(saved.entries.getFirst().stack().getCount() == 7 && saved.entries.getFirst().x() == 3
                 && saved.layout.sections().size() == 2, "数据包缩容影响了旧背包的边缘物品");
-            ItemStack fresh = GameAccess.bound(ExtractionCore.PACK.get(), PACK);
             LootSessions.initializeBag(player, fresh);
-            test.assertTrue(LootSessions.bag(player, fresh).layout.sections().getFirst().shape().area() == 1,
+            var compactSection = LootSessions.bag(player, fresh).layout.sections().getFirst();
+            test.assertTrue(compactSection.accepts(new ItemStack(Items.EMERALD)) && !compactSection.accepts(new ItemStack(Items.DIAMOND)),
+                "新背包应使用本次载入的数据包标签");
+            test.assertTrue(compactSection.shape().area() == 1,
                 "新背包应使用缩小后的容量");
             BlockPos rel = new BlockPos(2, 1, 1);
             CabinetEntity compact = place(test, rel, RACK);
@@ -147,6 +150,9 @@ public final class StorageReloadGameTests {
                 repository.reload();
             }
         }
+        var restoredSection = LootSessions.bag(player, fresh).layout.sections().getFirst();
+        test.assertTrue(restoredSection.accepts(new ItemStack(Items.EMERALD)) && !restoredSection.accepts(new ItemStack(Items.DIAMOND)),
+            "移除数据包后旧背包应保留标签物品快照");
         test.succeed();
     }
 
@@ -156,7 +162,7 @@ public final class StorageReloadGameTests {
         var mod = ModList.get().getModFileById(ExtractionCore.ID).getFile();
         try (var output = new ZipOutputStream(Files.newOutputStream(archive))) {
             for (String filename : List.of("pack.mcmeta", "data/extractioncombatcore/extraction/containers/tool_rack.json",
-                "data/extractioncombatcore/extraction/backpacks/field_pack.json")) {
+                "data/extractioncombatcore/extraction/backpacks/field_pack.json", "data/extractioncombatcore/tags/item/compact_supplies.json")) {
                 output.putNextEntry(new ZipEntry(filename));
                 try (var input = Files.newInputStream(mod.findResource("test_packs/compact_storage/" + filename))) {
                     input.transferTo(output);

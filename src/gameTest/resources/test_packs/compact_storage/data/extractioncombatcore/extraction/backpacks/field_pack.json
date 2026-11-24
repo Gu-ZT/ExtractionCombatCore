@@ -1,6 +1,6 @@
 {
   "outer": { "shape": ["X"], "rotatable": false },
   "sections": [
-    { "id": "small", "shape": ["X"] }
+    { "id": "small", "shape": ["X"], "accepts_tag": "extractioncombatcore:compact_supplies" }
   ]
 }

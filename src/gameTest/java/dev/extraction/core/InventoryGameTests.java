@@ -12,6 +12,8 @@ import net.minecraft.network.Connection;
 import net.minecraft.network.protocol.PacketFlow;
 import net.minecraft.network.protocol.game.ServerboundSetCarriedItemPacket;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.ResourceKey;
+import net.minecraft.core.registries.Registries;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.server.network.CommonListenerCookie;
 import net.minecraft.server.network.ServerGamePacketListenerImpl;
@@ -53,9 +55,9 @@ public final class InventoryGameTests {
             inventory.setItem(8, new ItemStack(Items.CLOCK));
             inventory.setItem(9, new ItemStack(Items.DIAMOND, 4));
             inventory.selected = 2;
-            inventory.swapPaint(-1);
+            inventory.setSelectedHotbarSlot(GameAccess.scrolledSlot(-1, inventory.selected, GameAccess.policy(player).hotbar()));
             test.assertTrue(inventory.selected == 0, "滚轮向右应从第三格回到第一格");
-            inventory.swapPaint(1);
+            inventory.setSelectedHotbarSlot(GameAccess.scrolledSlot(1, inventory.selected, GameAccess.policy(player).hotbar()));
             test.assertTrue(inventory.selected == 2, "滚轮向左应回到第三格");
             player.connection.handleSetCarriedItem(new ServerboundSetCarriedItemPacket(8));
             test.assertTrue(inventory.selected == 2, "数字键不能选中禁用的快捷栏");
@@ -64,7 +66,7 @@ public final class InventoryGameTests {
             menu.clicked(36, 2, ClickType.SWAP, player);
             test.assertTrue(inventory.getItem(0).is(Items.GOLD_INGOT), "开放的数字键应能交换物品");
             test.assertTrue(inventory.getSuitableHotbarSlot() < 3, "选取方块指向了禁用槽");
-            inventory.setPickedItem(new ItemStack(Items.CLOCK));
+            inventory.addAndPickItem(new ItemStack(Items.CLOCK));
             test.assertTrue(inventory.selected < 3 && inventory.getItem(8).is(Items.CLOCK), "选取方块取用了禁用格中的旧物");
             menu.clicked(9, 0, ClickType.QUICK_MOVE, player);
             test.assertTrue(inventory.getItem(9).getCount() == 4, "禁用槽参与了快捷转移");
@@ -84,8 +86,8 @@ public final class InventoryGameTests {
             ExtractionCore.HOTBAR.set(0);
             inventory.selected = 0;
             ItemStack old = inventory.getItem(0).copy();
-            inventory.setPickedItem(new ItemStack(Items.EMERALD));
-            inventory.swapPaint(-1);
+            inventory.addAndPickItem(new ItemStack(Items.EMERALD));
+            inventory.setSelectedHotbarSlot(GameAccess.scrolledSlot(-1, inventory.selected, GameAccess.policy(player).hotbar()));
             test.assertTrue(inventory.getSelected().isEmpty() && inventory.removeFromSelected(true).isEmpty()
                 && ItemStack.matches(old, inventory.getItem(0)), "零快捷栏仍从禁用主手取物");
             inventory.setItem(9, bag());
@@ -120,16 +122,16 @@ public final class InventoryGameTests {
             test.assertTrue(player.getProjectile(bow).isEmpty(), "禁用的原版背包仍提供弹药");
             inventory.setItem(40, new ItemStack(Items.ARROW, 2));
             test.assertTrue(player.getProjectile(bow).getCount() == 2, "副手原有的弹药用途应保持可用");
-            var recipe = test.getLevel().getRecipeManager().byKey(ResourceLocation.parse("minecraft:oak_planks")).orElseThrow();
+            var recipe = test.getLevel().recipeAccess().byKey(ResourceKey.create(Registries.RECIPE, ResourceLocation.parse("minecraft:oak_planks"))).orElseThrow();
             player.awardRecipes(List.of(recipe));
-            menu.handlePlacement(false, recipe, player);
+            menu.handlePlacement(false, false, recipe, test.getLevel(), inventory);
             test.assertTrue(menu.getCraftSlots().isEmpty() && inventory.getItem(9).is(Items.OAK_LOG), "配方书使用了禁用槽里的原木");
             menu.getSlot(1).set(new ItemStack(Items.CARROT));
-            menu.handlePlacement(false, recipe, player);
+            menu.handlePlacement(false, false, recipe, test.getLevel(), inventory);
             test.assertTrue(menu.getSlot(1).getItem().is(Items.CARROT), "配方书把禁用格当作清空合成栏的可用空间");
             menu.getSlot(1).set(ItemStack.EMPTY);
             inventory.setItem(2, new ItemStack(Items.OAK_LOG));
-            menu.handlePlacement(false, recipe, player);
+            menu.handlePlacement(false, false, recipe, test.getLevel(), inventory);
             test.assertTrue(!menu.getCraftSlots().isEmpty() && inventory.getItem(2).isEmpty()
                 && inventory.getItem(9).getCount() == 1, "配方书应只使用开放槽中的原木");
             test.succeed();
@@ -221,7 +223,7 @@ public final class InventoryGameTests {
 
     private static ItemStack iron(int count) {
         ItemStack stack = new ItemStack(Items.IRON_NUGGET, count);
-        stack.set(DataComponents.CUSTOM_MODEL_DATA, new CustomModelData(7));
+        stack.set(DataComponents.CUSTOM_MODEL_DATA, new CustomModelData(List.of(7f), List.of(), List.of(), List.of()));
         return stack;
     }
 

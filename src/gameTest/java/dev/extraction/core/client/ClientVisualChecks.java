@@ -327,16 +327,16 @@ public final class ClientVisualChecks {
              InputStream modelInput = mc.getResourceManager().open(model); NativeImage held = NativeImage.read(modelInput)) {
             for (int y = 0; y < 16; y++) {
                 for (int x = 0; x < 16; x++) {
-                    int want = expected.getPixelRGBA(x, y);
+                    int want = expected.getPixel(x, y);
                     if ((want >>> 24) < 240) {
                         continue;
                     }
-                    if (held.getPixelRGBA(x, y) != want) {
+                    if (held.getPixel(x, y) != want) {
                         distinctive++;
                     }
                     int px = (int) ((left + x + .5) * scale);
                     int py = (int) ((top + y + .5) * scale);
-                    int got = actual.getPixelRGBA(px, py);
+                    int got = actual.getPixel(px, py);
                     total++;
                     if (Math.abs((got & 255) - (want & 255)) <= 5 && Math.abs((got >>> 8 & 255) - (want >>> 8 & 255)) <= 5
                         && Math.abs((got >>> 16 & 255) - (want >>> 16 & 255)) <= 5) {

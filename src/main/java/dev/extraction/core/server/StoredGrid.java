@@ -86,6 +86,8 @@ final class StoredGrid {
         if (unlocked || !challenge.complete() || !challenge.allowed(player, position, true)) {
             return false;
         }
+        // 先同步成功扣费后的主副手，再向客户端发送解锁视图。
+        player.containerMenu.broadcastChanges();
         unlocked = true;
         revision++;
         if (generated) {

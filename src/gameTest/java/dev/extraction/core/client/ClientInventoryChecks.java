@@ -3,6 +3,7 @@ package dev.extraction.core.client;
 import dev.extraction.core.GameAccess;
 import dev.extraction.core.InventoryGameTests;
 import net.minecraft.client.Minecraft;
+import org.lwjgl.glfw.GLFW;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -41,7 +42,13 @@ final class ClientInventoryChecks {
             if (count == 0 && !inventory.getSelected().isEmpty()) {
                 throw new AssertionError("服务端将快捷栏改为零后，客户端主手仍可取物");
             }
-            inventory.swapPaint(-1);
+            long window = game.getWindow().getWindow();
+            var scroll = GLFW.glfwSetScrollCallback(window, null);
+            if (scroll == null) {
+                throw new AssertionError("未发现游戏注册的滚轮回调");
+            }
+            GLFW.glfwSetScrollCallback(window, scroll);
+            scroll.invoke(window, 0, -1);
             if (inventory.selected != (count == 9 ? 3 : 0)) {
                 throw new AssertionError("滚轮未按开放的快捷栏数量回绕 " + count);
             }

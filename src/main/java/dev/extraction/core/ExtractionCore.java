@@ -25,6 +25,7 @@ import net.neoforged.neoforge.registries.DeferredRegister;
 import net.neoforged.neoforge.registries.NeoForgeRegistries;
 
 import java.util.List;
+import java.util.Set;
 import java.util.function.Supplier;
 
 @Mod(ExtractionCore.ID)
@@ -35,15 +36,15 @@ public final class ExtractionCore {
     private static final DeferredRegister<BlockEntityType<?>> ENTITIES = DeferredRegister.create(Registries.BLOCK_ENTITY_TYPE, ID);
     private static final DeferredRegister<AttachmentType<?>> ATTACHMENTS = DeferredRegister.create(NeoForgeRegistries.ATTACHMENT_TYPES, ID);
     private static final DeferredRegister<CreativeModeTab> TABS = DeferredRegister.create(Registries.CREATIVE_MODE_TAB, ID);
-    public static final Supplier<Item> PACK = ITEMS.register("backpack", () -> new FieldPack(new Item.Properties().stacksTo(1)));
-    public static final Supplier<Block> CABINET = BLOCKS.register("cabinet", () -> new CabinetBlock(
-        BlockBehaviour.Properties.of().strength(-1, 3600000).pushReaction(PushReaction.BLOCK).noLootTable()));
-    public static final Supplier<BlockItem> CABINET_ITEM = ITEMS.register("cabinet", () -> new BlockItem(CABINET.get(), new Item.Properties()));
+    public static final Supplier<Item> PACK = ITEMS.registerItem("backpack", FieldPack::new, new Item.Properties().stacksTo(1));
+    public static final Supplier<Block> CABINET = BLOCKS.registerBlock("cabinet", CabinetBlock::new,
+        BlockBehaviour.Properties.of().strength(-1, 3600000).pushReaction(PushReaction.BLOCK).noLootTable());
+    public static final Supplier<BlockItem> CABINET_ITEM = ITEMS.registerSimpleBlockItem("cabinet", CABINET);
     public static final Supplier<Item> KEY = ITEMS.registerSimpleItem("service_key");
     public static final Supplier<Item> DECODER = ITEMS.registerSimpleItem("decoder", new Item.Properties().durability(128));
     public static final Supplier<Item> HOOK = ITEMS.registerSimpleItem("service_hook");
     public static final Supplier<BlockEntityType<CabinetEntity>> CABINET_ENTITY = ENTITIES.register("cabinet",
-        () -> BlockEntityType.Builder.of(CabinetEntity::new, CABINET.get()).build(null));
+        () -> new BlockEntityType<>(CabinetEntity::new, Set.of(CABINET.get())));
     public static final Supplier<AttachmentType<ItemStack>> EQUIPPED = ATTACHMENTS.register("equipped_backpack",
         () -> AttachmentType.builder(() -> ItemStack.EMPTY).serialize(ItemStack.OPTIONAL_CODEC).copyOnDeath().build());
     public static final List<String> DEMO_CABINETS = List.of("service_cabinet", "password", "audio_morse", "pattern_morse", "rolling_lock", "tool_rack");
