@@ -18,6 +18,7 @@
   "gui.extractioncombatcore.cooldown": "稍候",
   "gui.extractioncombatcore.decode_hint": "光标进入白条时按 %s 可加速",
   "gui.extractioncombatcore.drag_hint": "拖动放置 · 靠近格边转向 · 双击转移",
+  "gui.extractioncombatcore.empty_section": "%s · 空",
   "gui.extractioncombatcore.equip_hint": "右键装备或取下背包",
   "gui.extractioncombatcore.equipment": "副手和随身背包",
   "gui.extractioncombatcore.equipped_pack": "随身背包位",
@@ -60,7 +61,7 @@
   "item.extractioncombatcore.decoder": "手持译码器",
   "item.extractioncombatcore.service_hook": "维修挂钩",
   "item.extractioncombatcore.service_key": "维修钥匙",
-  "key.categories.extractioncombatcore": "搜刮与收纳",
+  "key.category.extractioncombatcore.general": "搜刮与收纳",
   "key.extractioncombatcore.challenge": "操控锁具",
   "key.extractioncombatcore.open": "打开随身背包",
   "tab.extractioncombatcore": "搜刮演示套件"

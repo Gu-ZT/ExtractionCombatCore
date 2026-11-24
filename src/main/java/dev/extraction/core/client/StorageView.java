@@ -1,7 +1,9 @@
 package dev.extraction.core.client;
 
-import com.mojang.blaze3d.systems.RenderSystem;
+import net.minecraft.client.renderer.RenderPipelines;
+import net.minecraft.nbt.NbtOps;
 import dev.extraction.core.rules.Shape;
+import net.minecraft.core.UUIDUtil;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
@@ -12,7 +14,7 @@ import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
 import net.minecraft.nbt.Tag;
 import net.minecraft.network.chat.Component;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 import net.minecraft.tags.TagKey;
 import net.minecraft.util.Mth;
 import net.minecraft.world.item.ItemStack;
@@ -26,7 +28,7 @@ import java.util.UUID;
 final class StorageView {
     static final int CELL = 18;
     private static final int TOP = 43;
-    private static final ResourceLocation LENS = ResourceLocation.fromNamespaceAndPath("extractioncombatcore", "textures/gui/search_lens.png");
+    private static final Identifier LENS = Identifier.fromNamespaceAndPath("extractioncombatcore", "textures/gui/search_lens.png");
     private final List<Section> sections = new ArrayList<>();
     private final List<CompoundTag> packs;
     private final boolean cabinetOpen;
@@ -128,16 +130,16 @@ final class StorageView {
 
     StorageView(CompoundTag view, StorageView old) {
         packs = compounds(view, "packs");
-        cabinetOpen = view.contains("cabinet", Tag.TAG_COMPOUND) && !compounds(view.getCompound("cabinet"), "sections").isEmpty();
+        cabinetOpen = view.contains("cabinet") && !compounds(view.getCompoundOrEmpty("cabinet"), "sections").isEmpty();
         for (int i = 0; i < packs.size(); i++) {
-            if (packs.get(i).getBoolean("selected")) {
+            if (packs.get(i).getBooleanOr("selected", false)) {
                 selectedPack = i;
                 break;
             }
         }
-        addGrid("bag", view.getCompound("bag"));
+        addGrid("bag", view.getCompoundOrEmpty("bag"));
         if (cabinetOpen) {
-            addGrid("cabinet", view.getCompound("cabinet"));
+            addGrid("cabinet", view.getCompoundOrEmpty("cabinet"));
         }
         addVanilla(compounds(view, "vanilla"));
         if (old != null) {
@@ -150,46 +152,47 @@ final class StorageView {
     }
 
     static List<CompoundTag> compounds(CompoundTag tag, String key) {
-        ListTag list = tag.getList(key, Tag.TAG_COMPOUND);
+        ListTag list = tag.getListOrEmpty(key);
         List<CompoundTag> values = new ArrayList<>(list.size());
         for (int i = 0; i < list.size(); i++) {
-            values.add(list.getCompound(i));
+            values.add(list.getCompoundOrEmpty(i));
         }
         return values;
     }
 
     private static Shape shape(CompoundTag tag) {
-        ListTag list = tag.getList("shape", Tag.TAG_STRING);
+        ListTag list = tag.getListOrEmpty("shape");
         if (list.isEmpty()) {
             return Shape.SINGLE;
         }
         List<String> rows = new ArrayList<>(list.size());
         for (int i = 0; i < list.size(); i++) {
-            rows.add(list.getString(i));
+            rows.add(list.getStringOr(i, ""));
         }
         return Shape.of(rows);
     }
 
     private static Entry entry(CompoundTag e, int x, int y, int slot) {
-        ItemStack stack = ItemStack.parseOptional(Minecraft.getInstance().player.registryAccess(), e.getCompound("stack"));
+        ItemStack stack = e.read("stack", ItemStack.OPTIONAL_CODEC, Minecraft.getInstance().player.registryAccess()
+            .createSerializationContext(NbtOps.INSTANCE)).orElse(ItemStack.EMPTY);
         Shape shape = shape(e);
-        int rotation = Math.floorMod(e.getInt("rotation"), 4);
-        return new Entry(e.hasUUID("id") ? e.getUUID("id") : null, stack, shape, slot >= 0 ? Shape.SINGLE : shape.rotate(rotation),
-            e.getBoolean("rotatable"), e.getString("grid_icon"), e.getString("slot_icon"), e.getString("quality"),
-            0xff000000 | e.getInt("color"), x, y, rotation, slot, e.getBoolean("recovery"));
+        int rotation = Math.floorMod(e.getIntOr("rotation", 0), 4);
+        return new Entry(e.read("id", UUIDUtil.CODEC).orElse(null), stack, shape, slot >= 0 ? Shape.SINGLE : shape.rotate(rotation),
+            e.getBooleanOr("rotatable", false), e.getStringOr("grid_icon", ""), e.getStringOr("slot_icon", ""), e.getStringOr("quality", ""),
+            0xff000000 | e.getIntOr("color", 0), x, y, rotation, slot, e.getBooleanOr("recovery", false));
     }
 
     private void addGrid(String panel, CompoundTag data) {
         List<Section> here = new ArrayList<>();
         int n = 0;
         for (CompoundTag source : compounds(data, "sections")) {
-            Section s = new Section(panel, source.getString("id"), n, shape(source), source.getBoolean("done"),
-                data.contains("searching") && data.getInt("searching") == n, source.getString("accepts_tag"));
-            if (source.contains("accepted_items", Tag.TAG_LIST)) {
-                ListTag ids = source.getList("accepted_items", Tag.TAG_STRING);
+            Section s = new Section(panel, source.getStringOr("id", ""), n, shape(source), source.getBooleanOr("done", false),
+                data.contains("searching") && data.getIntOr("searching", 0) == n, source.getStringOr("accepts_tag", ""));
+            if (source.contains("accepted_items")) {
+                ListTag ids = source.getListOrEmpty("accepted_items");
                 s.acceptedItems = new HashSet<>();
                 for (int i = 0; i < ids.size(); i++) {
-                    s.acceptedItems.add(ids.getString(i));
+                    s.acceptedItems.add(ids.getStringOr(i, ""));
                 }
             }
             here.add(s);
@@ -197,9 +200,9 @@ final class StorageView {
             n++;
         }
         for (CompoundTag e : compounds(data, "items")) {
-            int index = e.getInt("section");
+            int index = e.getIntOr("section", 0);
             if (index >= 0 && index < here.size()) {
-                here.get(index).entries.add(entry(e, e.getInt("x"), e.getInt("y"), -1));
+                here.get(index).entries.add(entry(e, e.getIntOr("x", 0), e.getIntOr("y", 0), -1));
             }
         }
     }
@@ -212,7 +215,7 @@ final class StorageView {
         Section main = new Section("vanilla", "inventory", 1, Shape.of(List.of("XXXXXXXXX", "XXXXXXXXX", "XXXXXXXXX")), true, false, "");
         Section extra = new Section("vanilla", "equipment", 2, Shape.of(List.of("XX")), true, false, "");
         for (CompoundTag e : slots) {
-            int slot = e.getInt("slot");
+            int slot = e.getIntOr("slot", 0);
             if (slot < 0 || slot > 41 || slot >= 36 && slot < 40) {
                 continue;
             }
@@ -282,14 +285,14 @@ final class StorageView {
     }
 
     String equipSelection() {
-        return selectedPack < 0 ? "" : packs.get(selectedPack).getString("name");
+        return selectedPack < 0 ? "" : packs.get(selectedPack).getStringOr("name", "");
     }
 
     int nextPack(int mx, int my) {
         if (my >= 22 && my < 40 && mx >= packX && mx < packX + packWidth && !packs.isEmpty()
             && (packs.size() > 1 || selectedPack < 0)) {
             int next = selectedPack < 0 ? 0 : Math.floorMod(selectedPack + (mx < packX + 16 ? -1 : 1), packs.size());
-            return packs.get(next).getInt("slot");
+            return packs.get(next).getIntOr("slot", 0);
         }
         return -1;
     }
@@ -354,8 +357,7 @@ final class StorageView {
                 int walk = (int) Math.floorMod(ticks, span * 2L);
                 int gx = s.x + Math.min(walk, span * 2 - walk);
                 int gy = s.y + (s.shape.height() * CELL - 16) / 2;
-                RenderSystem.enableBlend();
-                g.blit(LENS, gx, gy, 0f, 0f, 16, 16, 16, 16);
+                g.blit(RenderPipelines.GUI_TEXTURED, LENS, gx, gy, 0f, 0f, 16, 16, 16, 16);
             }
         }
         if (moving && dragged != null) {
@@ -440,7 +442,7 @@ final class StorageView {
         Entry e = hit.entry();
         if (e.stack().isEmpty()) {
             if (e.slot() == 41) {
-                g.renderTooltip(font, LootScreen.tr("equipped_pack"), mx, my);
+                g.setTooltipForNextFrame(font, LootScreen.tr("equipped_pack"), mx, my);
             }
             return;
         }
@@ -450,10 +452,10 @@ final class StorageView {
         }
         if (e.recovery()) {
             lines.add(LootScreen.tr("recover"));
-        } else if (hit.vanilla() && (e.slot() == 41 || packs.stream().anyMatch(p -> p.getInt("slot") == e.slot()))) {
+        } else if (hit.vanilla() && (e.slot() == 41 || packs.stream().anyMatch(p -> p.getIntOr("slot", 0) == e.slot()))) {
             lines.add(LootScreen.tr("equip_hint"));
         }
-        g.renderComponentTooltip(font, lines, mx, my);
+        g.setComponentTooltipForNextFrame(font, lines, mx, my);
     }
 
     int equipTarget(Hit hit) {
@@ -469,8 +471,8 @@ final class StorageView {
             }
             return -1;
         }
-        if (packs.stream().anyMatch(p -> p.getInt("slot") == hit.slot())
-            || hit.entry().stack().isEmpty() && packs.stream().anyMatch(p -> p.getInt("slot") == 41)) {
+        if (packs.stream().anyMatch(p -> p.getIntOr("slot", 0) == hit.slot())
+            || hit.entry().stack().isEmpty() && packs.stream().anyMatch(p -> p.getIntOr("slot", 0) == 41)) {
             return hit.slot();
         }
         return -1;
@@ -481,7 +483,7 @@ final class StorageView {
         if (hit.vanilla()) {
             action.putInt("slot", hit.slot());
         } else {
-            action.putUUID("id", hit.entry().id());
+            action.store("id", UUIDUtil.CODEC, hit.entry().id());
         }
     }
 
@@ -565,7 +567,7 @@ final class StorageView {
         Shape footprint = e.shape().rotate(drag.rotation);
         drawGridEntry(g, font, e, px, py, drag.rotation);
         boolean accepted = s.acceptedItems == null
-            ? s.accepts.isEmpty() || e.stack().is(TagKey.create(Registries.ITEM, ResourceLocation.parse(s.accepts)))
+            ? s.accepts.isEmpty() || e.stack().is(TagKey.create(Registries.ITEM, Identifier.parse(s.accepts)))
             : s.acceptedItems.contains(BuiltInRegistries.ITEM.getKey(e.stack().getItem()).toString());
         for (int row = 0; row < footprint.height(); row++) {
             for (int col = 0; col < footprint.width(); col++) {

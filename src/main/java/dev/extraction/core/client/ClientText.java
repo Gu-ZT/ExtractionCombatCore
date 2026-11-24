@@ -8,7 +8,7 @@ public final class ClientText {
     }
 
     public static void fill(BiConsumer<String, String> sink, boolean english) {
-        sink.accept("key.categories.extractioncombatcore", english ? "Extraction Combat Core" : "搜刮与收纳");
+        sink.accept("key.category.extractioncombatcore.general", english ? "Extraction Combat Core" : "搜刮与收纳");
         sink.accept("key.extractioncombatcore.open", english ? "Open field pack" : "打开随身背包");
         sink.accept("key.extractioncombatcore.challenge", english ? "Operate lock" : "操控锁具");
         String[][] entries = {
