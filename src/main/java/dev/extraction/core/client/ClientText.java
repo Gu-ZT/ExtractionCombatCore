@@ -13,6 +13,7 @@ public final class ClientText {
         sink.accept("key.extractioncombatcore.challenge", english ? "Operate lock" : "操控锁具");
         String[][] entries = {
             {"title", "随身收纳", "Field inventory"},
+            {"missing_puzzle_widget", "缺少小游戏界面 %s", "Missing puzzle widget for %s"},
             {"lock_title", "开启容器", "Container access"},
             {"cabinet", "容器", "Container"},
             {"section.main", "主仓", "Main compartment"},
