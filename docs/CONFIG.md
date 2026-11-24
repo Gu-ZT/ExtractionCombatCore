@@ -11,7 +11,7 @@
 
 ## 玩家库存配置
 
-世界的 `serverconfig/extractioncombatcore-server.toml` 管理库存限制。主背包与快捷栏可独立设置。禁用槽中的旧物可以取回，护甲和副手仍可使用。
+服务端实例中的 `config/extractioncombatcore-server.toml` 管理库存限制。主背包与快捷栏可独立设置。禁用槽中的旧物可以取回，护甲和副手仍可使用。
 
 ```toml
 vanilla_main_inventory_enabled = true
