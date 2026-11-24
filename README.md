@@ -4,19 +4,21 @@
 
 # ExtractionCombatCore
 
-**A Minecraft mod design for extraction-style looting, where data packs define what fits in a bag and what it takes to open a container.**
+**A Minecraft mod for extraction-style looting, where data packs define what fits in a bag and what it takes to open a container.**
 
 English | [简体中文](README.zh_CN.md)
 
 </div>
 
-**Status: design stage.** The [gameplay and data pack specification (in Chinese)](docs/搜刮玩法设计.md) describes the proposed mechanics. There is no playable build yet.
+This branch targets Minecraft 1.21.1 on NeoForge with AnvilLib 2.0.0. Build it with `./gradlew build`, then open the Extraction Demo Equipment creative tab. [Map author guide (Chinese)](docs/CONFIG.md)
 
 ## A minute at the service cabinet
 
 A powered cabinet has two ways in. Use a service key and hold for one second, or stay at the cabinet with a decoder. The decoder finishes on its own; timing a few inputs shortens the wait. Other containers can ask for a password, play a Morse message, show a Morse pattern, or use a scrolling character lock.
 
 Once the door opens, a magnifier sweeps across an opaque grey cover. A stack of iron nuggets appears first. You can take it and leave, or stay to uncover a hook five cells wide. Only revealed items show their quality outline. Omit `quality` to use vanilla rarity, supply a custom quality, or set it to `"disable"` to hide the outline and quality hint.
+
+![A rotated service hook with four iron nuggets tucked into its open cells](assets/field-pack.png)
 
 ## Will the hook fit?
 

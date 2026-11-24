@@ -1,0 +1,76 @@
+plugins {
+    id 'java'
+    id 'net.neoforged.moddev' version '2.0.147'
+}
+
+group = 'dev.extraction'
+version = '0.1.0'
+base.archivesName = "extractioncombatcore-${minecraft_version}"
+java.toolchain.languageVersion = JavaLanguageVersion.of(java_version as int)
+
+repositories { mavenCentral() }
+
+sourceSets {
+    gameTest {
+        compileClasspath += sourceSets.main.output
+        runtimeClasspath += sourceSets.main.output
+    }
+}
+configurations.gameTestImplementation.extendsFrom(configurations.implementation)
+
+neoForge {
+    version = neo_version
+    addModdingDependenciesTo sourceSets.gameTest
+    runs {
+        client { client() }
+        for (String role : ['host', 'guest', 'puzzles']) {
+            create("play${role.capitalize()}") {
+                client()
+                gameDirectory = file("build/playtest/${role}")
+                systemProperty 'extraction.playtest', role
+                systemProperty 'extraction.playtest.dir', providers.gradleProperty('playtestDir').getOrElse(file('build/playtest/session').absolutePath)
+                programArguments.addAll '--username', "Ecc${role.capitalize()}".toString(), '--uuid',
+                    [host: '1ab5bc40-1020-4ade-8879-64e70119ad55', guest: '456b5632-30d7-4470-9c65-2fad38447318',
+                     puzzles: '57dc7174-179d-475c-a21f-323a4a354335'][role]
+            }
+        }
+        server {
+            server()
+            programArgument '--nogui'
+        }
+        gameTestServer {
+            gameDirectory = file("build/gametest")
+            type = 'gameTestServer'
+            systemProperty 'neoforge.enabledGameTestNamespaces', 'extractioncombatcore'
+        }
+        data {
+            gameDirectory = file("build/datagen")
+            data()
+            programArguments.addAll '--mod', 'extractioncombatcore', '--all', '--output',
+                file('src/generated/resources').absolutePath, '--existing', file('src/main/resources').absolutePath
+        }
+    }
+    mods {
+        extractioncombatcore {
+            sourceSet sourceSets.main
+            sourceSet sourceSets.gameTest
+        }
+    }
+    unitTest {
+        enable()
+        testedMod = mods.extractioncombatcore
+    }
+}
+sourceSets.main.resources.srcDir 'src/generated/resources'
+dependencies {
+    implementation "dev.anvilcraft.lib:anvillib-rpc-neoforge-${anvil_game}:2.0.0"
+    testImplementation 'org.junit.jupiter:junit-jupiter:5.11.4'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher:1.11.4'
+}
+tasks.withType(JavaCompile).configureEach { options.encoding = 'UTF-8' }
+tasks.named('test') { useJUnitPlatform() }
+tasks.named('processResources') {
+    exclude '.cache/**'
+    from('assets/icon.png') { rename { 'extractioncombatcore.png' } }
+}
+tasks.named('jar') { from('LICENSES') { into 'META-INF/licenses' } }

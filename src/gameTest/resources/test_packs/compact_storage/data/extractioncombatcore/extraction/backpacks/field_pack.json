@@ -1,0 +1,6 @@
+{
+  "outer": { "shape": ["X"], "rotatable": false },
+  "sections": [
+    { "id": "small", "shape": ["X"] }
+  ]
+}

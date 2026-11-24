@@ -1,0 +1,19 @@
+{
+  "required": true,
+  "minVersion": "0.8",
+  "package": "dev.extraction.core.mixin",
+  "compatibilityLevel": "JAVA_21",
+  "mixins": [
+    "InventoryMenuMixin",
+    "InventoryMixin",
+    "MenuPolicyMixin",
+    "SlotPolicyMixin",
+    "PickupMixin",
+    "PlayerInventoryUseMixin",
+    "RecipeBookMixin",
+    "PlayerPacketsMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}

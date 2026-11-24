@@ -1,0 +1,12 @@
+{
+  "morse_dash": {
+    "sounds": [
+      "extractioncombatcore:morse_dash"
+    ]
+  },
+  "morse_dot": {
+    "sounds": [
+      "extractioncombatcore:morse_dot"
+    ]
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "required": true,
+  "minVersion": "0.8",
+  "package": "dev.extraction.core.client.mixin",
+  "compatibilityLevel": "JAVA_21",
+  "client": [
+    "VanillaIconMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}

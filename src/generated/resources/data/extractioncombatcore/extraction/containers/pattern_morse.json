@@ -1,0 +1,39 @@
+{
+  "access": {
+    "routes": [
+      {
+        "requires": [],
+        "steps": [
+          {
+            "type": "pattern_morse",
+            "answer": "SOS",
+            "flash": true,
+            "show_table": true
+          }
+        ]
+      }
+    ]
+  },
+  "loot_table": "extractioncombatcore:service_cabinet",
+  "search": {
+    "mode": "per_item",
+    "ticks_per_item": 24
+  },
+  "sections": [
+    {
+      "id": "main",
+      "shape": [
+        "XXXX  ",
+        "XXXXXX",
+        "XXXXXX"
+      ]
+    },
+    {
+      "id": "drawer",
+      "shape": [
+        "XXX",
+        "XX "
+      ]
+    }
+  ]
+}

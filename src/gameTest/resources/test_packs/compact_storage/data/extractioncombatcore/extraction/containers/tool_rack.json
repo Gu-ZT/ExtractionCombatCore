@@ -1,0 +1,7 @@
+{
+  "sections": [
+    { "id": "rack", "shape": ["  X  ", "XXXXX"] }
+  ],
+  "loot_table": "extractioncombatcore:service_cabinet",
+  "search": { "mode": "per_item", "ticks_per_item": 1 }
+}

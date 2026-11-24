@@ -1,0 +1,23 @@
+{
+  "loot_table": "extractioncombatcore:service_cabinet",
+  "search": {
+    "mode": "instant"
+  },
+  "sections": [
+    {
+      "id": "main",
+      "shape": [
+        "XXXX  ",
+        "XXXXXX",
+        "XXXXXX"
+      ]
+    },
+    {
+      "id": "drawer",
+      "shape": [
+        "XXX",
+        "XX "
+      ]
+    }
+  ]
+}

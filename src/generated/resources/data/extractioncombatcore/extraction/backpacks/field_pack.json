@@ -1,0 +1,29 @@
+{
+  "outer": {
+    "rotatable": true,
+    "shape": [
+      "XX",
+      "XX",
+      "XX"
+    ]
+  },
+  "sections": [
+    {
+      "id": "main",
+      "shape": [
+        "XXXX",
+        "XXXX",
+        "XXXX",
+        "XXXX",
+        "XXXX"
+      ]
+    },
+    {
+      "id": "side",
+      "shape": [
+        " X",
+        "XX"
+      ]
+    }
+  ]
+}

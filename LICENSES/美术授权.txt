@@ -1,0 +1,1 @@
+本项目原创的贴图与模型由项目权利人保留全部权利。源码采用 LGPL-3.0-only。Gradle Wrapper 属于 Gradle 项目，适用 Apache-2.0。

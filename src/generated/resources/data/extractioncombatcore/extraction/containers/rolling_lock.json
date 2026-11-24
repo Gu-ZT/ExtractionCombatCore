@@ -1,0 +1,38 @@
+{
+  "access": {
+    "routes": [
+      {
+        "requires": [],
+        "steps": [
+          {
+            "type": "rolling_lock",
+            "error_pause_ticks": 40,
+            "positions": 5
+          }
+        ]
+      }
+    ]
+  },
+  "loot_table": "extractioncombatcore:service_cabinet",
+  "search": {
+    "mode": "per_item",
+    "ticks_per_item": 24
+  },
+  "sections": [
+    {
+      "id": "main",
+      "shape": [
+        "XXXX  ",
+        "XXXXXX",
+        "XXXXXX"
+      ]
+    },
+    {
+      "id": "drawer",
+      "shape": [
+        "XXX",
+        "XX "
+      ]
+    }
+  ]
+}

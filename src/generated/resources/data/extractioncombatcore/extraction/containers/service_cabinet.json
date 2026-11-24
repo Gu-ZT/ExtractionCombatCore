@@ -1,0 +1,64 @@
+{
+  "access": {
+    "routes": [
+      {
+        "requires": [
+          {
+            "type": "powered"
+          },
+          {
+            "type": "held_item",
+            "consume": true,
+            "item": "extractioncombatcore:service_key"
+          }
+        ],
+        "steps": [
+          {
+            "type": "hold",
+            "ticks": 20
+          }
+        ]
+      },
+      {
+        "requires": [
+          {
+            "type": "powered"
+          },
+          {
+            "type": "held_item",
+            "item": "extractioncombatcore:decoder"
+          }
+        ],
+        "steps": [
+          {
+            "type": "accelerated_decode",
+            "hit_bonus": 0.15,
+            "passive_ticks": 400
+          }
+        ]
+      }
+    ]
+  },
+  "loot_table": "extractioncombatcore:service_cabinet",
+  "search": {
+    "mode": "per_item",
+    "ticks_per_item": 24
+  },
+  "sections": [
+    {
+      "id": "main",
+      "shape": [
+        "XXXX  ",
+        "XXXXXX",
+        "XXXXXX"
+      ]
+    },
+    {
+      "id": "drawer",
+      "shape": [
+        "XXX",
+        "XX "
+      ]
+    }
+  ]
+}

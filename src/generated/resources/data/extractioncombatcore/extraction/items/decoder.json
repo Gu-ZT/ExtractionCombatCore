@@ -1,0 +1,11 @@
+{
+  "icons": {
+    "vanilla_slot": "extractioncombatcore:item/decoder"
+  },
+  "item": {
+    "items": "extractioncombatcore:decoder"
+  },
+  "shape": [
+    "X"
+  ]
+}

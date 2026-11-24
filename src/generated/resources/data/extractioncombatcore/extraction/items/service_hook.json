@@ -1,0 +1,16 @@
+{
+  "grid_stack_limit": 1,
+  "icons": {
+    "grid": "extractioncombatcore:item/service_hook_grid",
+    "vanilla_slot": "extractioncombatcore:item/service_hook_slot"
+  },
+  "item": {
+    "items": "extractioncombatcore:service_hook"
+  },
+  "quality": "extractioncombatcore:precision",
+  "rotatable": true,
+  "shape": [
+    "  X  ",
+    "XXXXX"
+  ]
+}

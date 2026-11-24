@@ -1,0 +1,11 @@
+{
+  "icons": {
+    "vanilla_slot": "extractioncombatcore:item/service_key"
+  },
+  "item": {
+    "items": "extractioncombatcore:service_key"
+  },
+  "shape": [
+    "X"
+  ]
+}
