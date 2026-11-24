@@ -27,7 +27,11 @@ public final class GameAccess {
 
     public static ItemStack bound(Item item, ResourceLocation type) {
         ItemStack stack = new ItemStack(item);
-        CustomData.update(DataComponents.CUSTOM_DATA, stack, tag -> tag.putString(TYPE, type.toString()));
+        if (isBag(stack)) {
+            stack.set(ExtractionCore.BACKPACK.get(), type);
+        } else {
+            CustomData.update(DataComponents.CUSTOM_DATA, stack, tag -> tag.putString(TYPE, type.toString()));
+        }
         stack.set(DataComponents.ITEM_NAME, Component.translatableWithFallback(
             "definition." + type.getNamespace() + "." + type.getPath().replace('/', '.'), type.toString()));
         return stack;
@@ -39,11 +43,25 @@ public final class GameAccess {
     }
 
     public static ResourceLocation bagType(ItemStack stack) {
-        return definition(stack, "field_pack");
+        ResourceLocation layout = stack.get(ExtractionCore.BACKPACK.get());
+        if (layout == null || (stack.is(ExtractionCore.PACK.get()) && layout.equals(ExtractionCore.id("field_pack")))) {
+            return definition(stack, "field_pack");
+        }
+        return layout;
     }
 
     public static boolean isBag(ItemStack stack) {
-        return stack.is(ExtractionCore.PACK.get());
+        return !stack.isEmpty() && stack.has(ExtractionCore.BACKPACK.get());
+    }
+
+    /** 多件未分配实例的背包可以拆开，只有单件物品栈可以持有库存。 */
+    public static boolean isSingleBag(ItemStack stack) {
+        return stack.getCount() == 1 && isBag(stack);
+    }
+
+    /** 背包拆为单件后才建立库存，已有实例可跳过物品栏逐刻的初始化。 */
+    public static boolean needsBagInstance(ItemStack stack) {
+        return isSingleBag(stack) && !stack.getOrDefault(DataComponents.CUSTOM_DATA, CustomData.EMPTY).contains(INSTANCE);
     }
 
     public static Optional<UUID> instanceId(ItemStack stack) {
@@ -57,6 +75,16 @@ public final class GameAccess {
     }
 
     public static void saveBag(ServerPlayer player, ItemStack stack, CompoundTag data) {
+        if (!isSingleBag(stack)) {
+            throw new IllegalArgumentException("保存背包需要单件带有背包组件的物品");
+        }
+        if (stack.getMaxStackSize() != 1) {
+            stack.set(DataComponents.MAX_STACK_SIZE, 1);
+        }
+        if (stack.is(ExtractionCore.PACK.get()) && stack.getOrDefault(DataComponents.CUSTOM_DATA, CustomData.EMPTY).contains(TYPE)) {
+            stack.set(ExtractionCore.BACKPACK.get(), bagType(stack));
+            CustomData.update(DataComponents.CUSTOM_DATA, stack, value -> value.remove(TYPE));
+        }
         CompoundTag tag = stack.getOrDefault(DataComponents.CUSTOM_DATA, CustomData.EMPTY).copyTag();
         UUID id = tag.hasUUID(INSTANCE) ? tag.getUUID(INSTANCE) : UUID.randomUUID();
         if (!tag.hasUUID(INSTANCE)) {
@@ -146,17 +174,17 @@ public final class GameAccess {
 
     public static int selectedBag(ServerPlayer player) {
         int index = player.getPersistentData().getInt(SELECTED);
-        if (player.getPersistentData().contains(SELECTED) && enabled(index) && isBag(itemAt(player, index))) {
+        if (player.getPersistentData().contains(SELECTED) && enabled(index) && isSingleBag(itemAt(player, index))) {
             return index;
         }
-        return isBag(itemAt(player, EQUIPMENT_SLOT)) ? EQUIPMENT_SLOT : -1;
+        return isSingleBag(itemAt(player, EQUIPMENT_SLOT)) ? EQUIPMENT_SLOT : -1;
     }
 
     public static void selectBag(ServerPlayer player, int index) {
         if (index == -1) {
             player.getPersistentData().remove(SELECTED);
         } else if ((index >= 0 && index < 36 || index == 40 || index == EQUIPMENT_SLOT)
-            && enabled(index) && isBag(itemAt(player, index))) {
+            && enabled(index) && isSingleBag(itemAt(player, index))) {
             player.getPersistentData().putInt(SELECTED, index);
         }
     }
@@ -167,7 +195,7 @@ public final class GameAccess {
         }
         ItemStack bag = itemAt(player, source);
         ItemStack prior = itemAt(player, EQUIPMENT_SLOT);
-        if ((!bag.isEmpty() && !isBag(bag)) || (!enabled(source) && !prior.isEmpty())) {
+        if ((!bag.isEmpty() && !isSingleBag(bag)) || (!enabled(source) && !prior.isEmpty())) {
             return false;
         }
         setItemAt(player, source, prior);

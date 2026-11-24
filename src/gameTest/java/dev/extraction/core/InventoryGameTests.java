@@ -22,6 +22,7 @@ import net.minecraft.world.entity.item.ItemEntity;
 import net.minecraft.world.inventory.ClickType;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
+import net.minecraft.world.item.component.CustomData;
 import net.minecraft.world.item.component.CustomModelData;
 import net.minecraft.world.level.GameRules;
 import net.minecraft.world.phys.Vec3;
@@ -149,7 +150,20 @@ public final class InventoryGameTests {
             ExtractionCore.MAIN.set(false);
             ExtractionCore.HOTBAR.set(3);
             ServerPlayer player = player(test, "PickupTest");
-            ItemStack pack = bag();
+            ItemStack supplies = new ItemStack(Items.PAPER, 2);
+            supplies.set(ExtractionCore.BACKPACK.get(), ExtractionCore.id("field_pack"));
+            LootSessions.initializeBag(player, supplies);
+            player.getInventory().setItem(0, supplies);
+            test.assertTrue(GameAccess.instanceId(supplies).isEmpty() && !GameAccess.equip(player, 0),
+                "成叠背包应在拆开后分别分配库存");
+            ItemStack pack = supplies.split(1);
+            player.getInventory().setItem(0, pack);
+            test.assertTrue(GameAccess.equip(player, 0) && GameAccess.selectedBag(player) == GameAccess.EQUIPMENT_SLOT,
+                "带有背包组件的普通物品应可装备");
+            LootSessions.initializeBag(player, pack);
+            LootSessions.initializeBag(player, supplies);
+            test.assertTrue(pack.getMaxStackSize() == 1 && GameAccess.instanceId(pack).isPresent()
+                && !GameAccess.instanceId(pack).equals(GameAccess.instanceId(supplies)), "拆开的两个背包应使用独立库存");
             CompoundTag saved = new CompoundTag();
             saved.putString("layout", "{\"outer\":{\"shape\":[\"X\"]},\"sections\":[{\"id\":\"main\",\"shape\":[\"X\"]}]}");
             GameAccess.saveBag(player, pack, saved);
@@ -200,6 +214,12 @@ public final class InventoryGameTests {
                 GameAccess.saveBag(player, pack, saved);
                 GameAccess.setItemAt(player, GameAccess.EQUIPMENT_SLOT, pack);
                 UUID id = GameAccess.instanceId(pack).orElseThrow();
+                var legacyLayout = ExtractionCore.id("legacy_pack");
+                CustomData.update(DataComponents.CUSTOM_DATA, pack, value -> value.putString("extraction_definition", legacyLayout.toString()));
+                test.assertTrue(GameAccess.bagType(pack).equals(legacyLayout), "默认组件覆盖了存档中的背包定义");
+                GameAccess.saveBag(player, pack, GameAccess.bagData(player, pack));
+                test.assertTrue(legacyLayout.equals(pack.get(ExtractionCore.BACKPACK.get()))
+                    && GameAccess.instanceId(pack).orElseThrow().equals(id), "迁移背包定义时改变了原实例");
                 player.die(player.damageSources().genericKill());
                 var drops = test.getLevel().getEntitiesOfClass(ItemEntity.class, player.getBoundingBox().inflate(4),
                     entity -> GameAccess.instanceId(entity.getItem()).filter(id::equals).isPresent());

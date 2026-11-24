@@ -38,6 +38,7 @@
   "gui.extractioncombatcore.lock.sneak": "Sneak to unlock",
   "gui.extractioncombatcore.lock.sneak_interact": "Sneak to unlock",
   "gui.extractioncombatcore.lock_title": "Container access",
+  "gui.extractioncombatcore.missing_puzzle_widget": "Missing puzzle widget for %s",
   "gui.extractioncombatcore.no_pack": "No field pack",
   "gui.extractioncombatcore.organizing": "Rearranging…",
   "gui.extractioncombatcore.password_hint": "Enter the code from the map. Keep leading zeros.",
